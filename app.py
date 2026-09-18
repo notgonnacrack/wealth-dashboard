@@ -335,11 +335,7 @@ def main():
 
         # 내부 식별자 및 체크박스 컬럼 추가
         display_df.insert(0, "_ID", range(len(display_df)))
-        
-        if "select_all_toggle" not in st.session_state:
-            st.session_state.select_all_toggle = False
-            
-        display_df.insert(1, "그래프 표시", st.session_state.select_all_toggle)
+        display_df.insert(1, "그래프 표시", False)
 
         def format_money(val, is_profit=False, is_pct=False):
             if pd.isna(val): return ""
@@ -445,21 +441,6 @@ def main():
         
         st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
         
-        if "editor_key" not in st.session_state:
-            st.session_state.editor_key = 0
-
-        col_btn1, col_btn2, _ = st.columns([1, 1, 3])
-        with col_btn1:
-            if st.button("☑️ 차트 일괄 선택", use_container_width=True, help="모든 자산을 차트에 표시합니다. (표 편집 내역이 초기화됩니다)"):
-                st.session_state.select_all_toggle = True
-                st.session_state.editor_key += 1
-                st.rerun()
-        with col_btn2:
-            if st.button("☐ 차트 일괄 해제", use_container_width=True, help="차트 표시를 모두 해제합니다. (표 편집 내역이 초기화됩니다)"):
-                st.session_state.select_all_toggle = False
-                st.session_state.editor_key += 1
-                st.rerun()
-
         base_cols = ["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"]
         edited_display = st.data_editor(
             editor_df,
@@ -467,7 +448,7 @@ def main():
             use_container_width=True,
             num_rows="dynamic",
             height=600,
-            key=f"main_table_editor_{st.session_state.editor_key}"
+            key="main_table_editor"
         )
         
         if st.button("수정/삭제 변경사항 저장"):
