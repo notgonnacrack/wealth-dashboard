@@ -403,14 +403,13 @@ def main():
             "Profit/Loss (%)": st.column_config.NumberColumn("수익률 (%)", disabled=True, format="%.2f"),
         }
         
-        st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
+        st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
 
         base_cols = ["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"]
         edited_display = st.data_editor(
             editor_df,
             column_config=col_config,
             use_container_width=True,
-            num_rows="dynamic",
             height=600,
             key="main_table_editor"
         )
