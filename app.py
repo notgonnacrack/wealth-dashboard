@@ -633,6 +633,9 @@ def main():
                 min_value=0, value=int(saved_cash), step=1000000,
                 help="아직 자산으로 매수하지 않은 현금을 입력하면, 이 현금을 포함한 총액을 기준으로 목표 비중에 맞추기 위해 어떤 자산을 얼마나 더 사야 하는지(과부족 금액) 자동 계산해 줍니다."
             )
+            if available_cash is None:
+                available_cash = 0
+                
         with col_cash_btn:
             st.write("<br>", unsafe_allow_html=True)
             if st.button("저장", key="save_cash_btn"):
