@@ -600,17 +600,30 @@ def main():
 
         # 1. 자산 분류(소분류)별 비율 분석
         st.markdown("---")
-        st.subheader("📊 자산 포트폴리오 비중 (소분류)")
+        
+        col_title, col_cash = st.columns([1.2, 1])
+        with col_title:
+            st.subheader("📊 자산 포트폴리오 비중 (소분류)")
+        with col_cash:
+            available_cash = st.number_input(
+                "💵 추가 투자 가능 여유 현금 (₩)", 
+                min_value=0, value=0, step=1000000,
+                help="아직 자산으로 매수하지 않은 현금을 입력하면, 이 현금을 포함한 총액을 기준으로 목표 비중에 맞추기 위해 어떤 자산을 얼마나 더 사야 하는지(과부족 금액) 자동 계산해 줍니다."
+            )
         
         target_weights_df = load_target_weights()
         target_categories = target_weights_df["Category"].tolist()
         
         # 목표 비중에 정의된 카테고리에 속한 자산만 필터링하여 총합 계산
         filtered_display_df = display_df[display_df["Category"].isin(target_categories)]
-        target_total_krw = filtered_display_df["Current Value (KRW)"].sum()
+        current_invested_krw = filtered_display_df["Current Value (KRW)"].sum()
+        
+        # 여유 현금을 포함한 새로운 전체 목표 금액
+        target_total_krw = current_invested_krw + available_cash
         
         category_df = filtered_display_df.groupby("Category")["Current Value (KRW)"].sum().reset_index()
-        category_df["Ratio (%)"] = (category_df["Current Value (KRW)"] / target_total_krw) * 100 if target_total_krw > 0 else 0
+        # 현재 비중은 이미 투자된 금액만을 기준으로 100%를 보여줍니다.
+        category_df["Ratio (%)"] = (category_df["Current Value (KRW)"] / current_invested_krw) * 100 if current_invested_krw > 0 else 0
         
         # 목표 비중과 비교할 수 있도록 병합 (정의된 카테고리가 모두 나오도록)
         category_df = pd.merge(target_weights_df, category_df, on="Category", how="left").fillna(0)
