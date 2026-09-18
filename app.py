@@ -557,22 +557,29 @@ def main():
             display_table = table_df[["Category", "Target (%)", "Ratio (%)", "비중 차이", "Current Value (KRW)", "과부족 금액"]].copy()
             display_table.columns = ["자산 분류", "목표 비중 (%)", "현재 비중 (%)", "비중 차이 (%p)", "현재 금액 (₩)", "과부족 금액 (₩)"]
             
-            # 콤마 표시를 위해 정수형으로 변환 (format 파라미터를 안 쓰면 자동 콤마가 붙음)
-            display_table["현재 금액 (₩)"] = display_table["현재 금액 (₩)"].astype(int)
-            display_table["과부족 금액 (₩)"] = display_table["과부족 금액 (₩)"].astype(int)
+            def style_category(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                for col in df.columns:
+                    if col in ["비중 차이 (%p)", "과부족 금액 (₩)"]:
+                        # 마이너스는 빨간색, 플러스는 파란색
+                        styles[col] = df[col].apply(lambda x: 'color: #ff4b4b; text-align: right;' if x < -0.01 else ('color: #0068c9; text-align: right;' if x > 0.01 else 'text-align: right;'))
+                    elif col != "자산 분류":
+                        styles[col] = 'text-align: right;'
+                return styles
+            
+            styled_display = display_table.style.format({
+                "목표 비중 (%)": "{:.1f}",
+                "현재 비중 (%)": "{:.1f}",
+                "비중 차이 (%p)": "{:+.1f}",
+                "현재 금액 (₩)": "{:,.0f}",
+                "과부족 금액 (₩)": "{:+,.0f}"
+            }).apply(style_category, axis=None)
             
             st.dataframe(
-                display_table, 
+                styled_display, 
                 use_container_width=True, 
                 hide_index=True, 
-                height=int((len(display_table) + 1.5) * 38),
-                column_config={
-                    "목표 비중 (%)": st.column_config.NumberColumn("목표 비중 (%)", format="%.1f"),
-                    "현재 비중 (%)": st.column_config.NumberColumn("현재 비중 (%)", format="%.1f"),
-                    "비중 차이 (%p)": st.column_config.NumberColumn("비중 차이 (%p)", format="%+.1f"),
-                    "현재 금액 (₩)": st.column_config.NumberColumn("현재 금액 (₩)"),
-                    "과부족 금액 (₩)": st.column_config.NumberColumn("과부족 금액 (₩)"),
-                }
+                height=int((len(display_table) + 1.5) * 38)
             )
 
         # 2. 계좌/증권사(대분류)별 비율 분석
@@ -597,17 +604,23 @@ def main():
             g_display.columns = ["계좌/증권사 (대분류)", "현재 금액 (₩)", "현재 비중 (%)"]
             g_display = g_display[["계좌/증권사 (대분류)", "현재 비중 (%)", "현재 금액 (₩)"]]
             
-            g_display["현재 금액 (₩)"] = g_display["현재 금액 (₩)"].astype(int)
+            def style_group(df):
+                styles = pd.DataFrame('', index=df.index, columns=df.columns)
+                for col in df.columns:
+                    if col != "계좌/증권사 (대분류)":
+                        styles[col] = 'text-align: right;'
+                return styles
+                
+            styled_g = g_display.style.format({
+                "현재 비중 (%)": "{:.1f}",
+                "현재 금액 (₩)": "{:,.0f}"
+            }).apply(style_group, axis=None)
             
             st.dataframe(
-                g_display, 
+                styled_g, 
                 use_container_width=True, 
                 hide_index=True, 
-                height=int((len(g_display) + 1.5) * 38),
-                column_config={
-                    "현재 비중 (%)": st.column_config.NumberColumn("현재 비중 (%)", format="%.1f"),
-                    "현재 금액 (₩)": st.column_config.NumberColumn("현재 금액 (₩)"),
-                }
+                height=int((len(g_display) + 1.5) * 38)
             )
 
         # 자산 총액 변동 그래프
