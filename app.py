@@ -327,27 +327,8 @@ def main():
         # 체크박스 컬럼 추가
         display_df.insert(0, "그래프 표시", False)
 
-        # 계산된 파생 컬럼들을 미리 문자열(콤마 및 기호 포함)로 포맷팅
-        # 단, 에디터에서 원본 숫자값이 반환되어야 하는 컬럼(base_cols)은 제외
+        # 계산된 파생 컬럼들은 원본 숫자형(float) 그대로 유지하여 우측 정렬이 되도록 함
         editor_df = display_df.copy()
-        editor_df["Historical Rate (KRW)"] = editor_df["Historical Rate (KRW)"].map("₩{:,.2f}".format)
-        editor_df["Total Purchase (USD)"] = editor_df["Total Purchase (USD)"].map("${:,.2f}".format)
-        editor_df["Total Purchase (KRW)"] = editor_df["Total Purchase (KRW)"].map("₩{:,.0f}".format)
-        
-        formatted_curr_prices = []
-        for _, r in editor_df.iterrows():
-            if r.get("Currency", "USD") == "USD":
-                formatted_curr_prices.append(f"${r['Current Price (USD)']:,.2f}")
-            else:
-                formatted_curr_prices.append(f"₩{r['Current Price (USD)']:,.0f}")
-        editor_df["Current Price (USD)"] = formatted_curr_prices
-        
-        editor_df["Current Value (USD)"] = editor_df["Current Value (USD)"].map("${:,.2f}".format)
-        editor_df["Current Value (KRW)"] = editor_df["Current Value (KRW)"].map("₩{:,.0f}".format)
-        editor_df["Asset Profit (KRW)"] = editor_df["Asset Profit (KRW)"].map("₩{:,.0f}".format)
-        editor_df["FX Profit (KRW)"] = editor_df["FX Profit (KRW)"].map("₩{:,.0f}".format)
-        editor_df["Profit/Loss (KRW)"] = editor_df["Profit/Loss (KRW)"].map("₩{:,.0f}".format)
-        editor_df["Profit/Loss (%)"] = editor_df["Profit/Loss (%)"].map("{:,.2f}%".format)
 
         # column_config를 이용한 포맷팅 (st.data_editor 용)
         target_weights_df = load_target_weights()
@@ -359,22 +340,21 @@ def main():
             "Category": st.column_config.SelectboxColumn("자산 분류 (소분류)", options=category_options),
             "Ticker": st.column_config.TextColumn("티커"),
             "Purchase Date": st.column_config.TextColumn("매수 일자"),
-            # 편집 가능한 숫자는 콤마가 있으면 오히려 수정시 불편할 수 있으나, 가독성을 위해 format 지정 
             "Purchase Price": st.column_config.NumberColumn("매수 단가 (수정가능)"), 
             "Quantity": st.column_config.NumberColumn("수량 (수정가능)"),
             "Currency": st.column_config.SelectboxColumn("통화", options=["USD", "KRW"]),
             
-            # 아래 컬럼들은 문자열로 매핑되었으므로 TextColumn으로 취급(수정불가)
-            "Historical Rate (KRW)": st.column_config.TextColumn("과거 환율", disabled=True),
-            "Total Purchase (USD)": st.column_config.TextColumn("총 매수(USD)", disabled=True),
-            "Total Purchase (KRW)": st.column_config.TextColumn("총 매수(KRW)", disabled=True),
-            "Current Price (USD)": st.column_config.TextColumn("현재 시세", disabled=True),
-            "Current Value (USD)": st.column_config.TextColumn("현재 가치(USD)", disabled=True),
-            "Current Value (KRW)": st.column_config.TextColumn("현재 가치(KRW)", disabled=True),
-            "Asset Profit (KRW)": st.column_config.TextColumn("자산 손익(KRW)", disabled=True),
-            "FX Profit (KRW)": st.column_config.TextColumn("환차익(KRW)", disabled=True),
-            "Profit/Loss (KRW)": st.column_config.TextColumn("수익/손실(KRW)", disabled=True),
-            "Profit/Loss (%)": st.column_config.TextColumn("수익률(%)", disabled=True),
+            # 파생 컬럼들 (NumberColumn을 사용하여 우측 정렬 및 자동 포맷팅)
+            "Historical Rate (KRW)": st.column_config.NumberColumn("과거 환율", disabled=True, format="₩ %.2f"),
+            "Total Purchase (USD)": st.column_config.NumberColumn("총 매수(USD)", disabled=True, format="$ %.2f"),
+            "Total Purchase (KRW)": st.column_config.NumberColumn("총 매수(KRW)", disabled=True, format="₩ %.0f"),
+            "Current Price (USD)": st.column_config.NumberColumn("현재 시세", disabled=True, format="%.2f"),
+            "Current Value (USD)": st.column_config.NumberColumn("현재 가치(USD)", disabled=True, format="$ %.2f"),
+            "Current Value (KRW)": st.column_config.NumberColumn("현재 가치(KRW)", disabled=True, format="₩ %.0f"),
+            "Asset Profit (KRW)": st.column_config.NumberColumn("자산 손익(KRW)", disabled=True, format="₩ %.0f"),
+            "FX Profit (KRW)": st.column_config.NumberColumn("환차익(KRW)", disabled=True, format="₩ %.0f"),
+            "Profit/Loss (KRW)": st.column_config.NumberColumn("수익/손실(KRW)", disabled=True, format="₩ %.0f"),
+            "Profit/Loss (%)": st.column_config.NumberColumn("수익률(%)", disabled=True, format="%.2f%%"),
         }
         
         st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
@@ -576,15 +556,19 @@ def main():
             display_table = table_df[["Category", "Target (%)", "Ratio (%)", "비중 차이", "Current Value (KRW)", "과부족 금액"]].copy()
             display_table.columns = ["자산 분류", "목표 비중", "현재 비중", "비중 차이", "현재 금액", "과부족 금액"]
             
-            # 포맷팅
-            display_table["목표 비중"] = display_table["목표 비중"].map("{:.1f}%".format)
-            display_table["현재 비중"] = display_table["현재 비중"].map("{:.1f}%".format)
-            display_table["비중 차이"] = display_table["비중 차이"].apply(lambda x: f"{x:+.1f}%p")
-            
-            display_table["현재 금액"] = display_table["현재 금액"].map("₩{:,.0f}".format)
-            display_table["과부족 금액"] = display_table["과부족 금액"].apply(lambda x: f"₩{x:+,.0f}")
-            
-            st.dataframe(display_table, use_container_width=True, hide_index=True, height=int((len(display_table) + 1.5) * 35))
+            st.dataframe(
+                display_table, 
+                use_container_width=True, 
+                hide_index=True, 
+                height=int((len(display_table) + 1.5) * 38),
+                column_config={
+                    "목표 비중": st.column_config.NumberColumn("목표 비중", format="%.1f%%"),
+                    "현재 비중": st.column_config.NumberColumn("현재 비중", format="%.1f%%"),
+                    "비중 차이": st.column_config.NumberColumn("비중 차이", format="%+.1f%%p"),
+                    "현재 금액": st.column_config.NumberColumn("현재 금액", format="₩ %.0f"),
+                    "과부족 금액": st.column_config.NumberColumn("과부족 금액", format="₩ %+.0f"),
+                }
+            )
 
         # 2. 계좌/증권사(대분류)별 비율 분석
         st.markdown("---")
@@ -607,9 +591,17 @@ def main():
             g_display = group_df.copy()
             g_display.columns = ["계좌/증권사 (대분류)", "현재 금액", "현재 비중"]
             g_display = g_display[["계좌/증권사 (대분류)", "현재 비중", "현재 금액"]]
-            g_display["현재 비중"] = g_display["현재 비중"].map("{:.1f}%".format)
-            g_display["현재 금액"] = g_display["현재 금액"].map("₩{:,.0f}".format)
-            st.dataframe(g_display, use_container_width=True, hide_index=True, height=int((len(g_display) + 1.5) * 35))
+            
+            st.dataframe(
+                g_display, 
+                use_container_width=True, 
+                hide_index=True, 
+                height=int((len(g_display) + 1.5) * 38),
+                column_config={
+                    "현재 비중": st.column_config.NumberColumn("현재 비중", format="%.1f%%"),
+                    "현재 금액": st.column_config.NumberColumn("현재 금액", format="₩ %.0f"),
+                }
+            )
 
         # 자산 총액 변동 그래프
 
