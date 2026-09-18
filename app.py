@@ -333,8 +333,9 @@ def main():
         display_df["Profit/Loss (KRW)"] = profits_krw
         display_df["Profit/Loss (%)"] = profits_pct
 
-        # 체크박스 컬럼 추가
-        display_df.insert(0, "그래프 표시", False)
+        # 내부 식별자 및 체크박스 컬럼 추가
+        display_df.insert(0, "_ID", range(len(display_df)))
+        display_df.insert(1, "그래프 표시", False)
 
         def format_money(val, is_profit=False, is_pct=False):
             if pd.isna(val): return ""
@@ -356,6 +357,7 @@ def main():
         total_pct = (total_profit / total_purch_krw_sum) * 100 if total_purch_krw_sum > 0 else 0
         
         total_row = pd.DataFrame([{
+            "_ID": -1,
             "그래프 표시": False,
             "Group": "합계",
             "Category": "-",
@@ -415,6 +417,7 @@ def main():
         category_options = target_weights_df["Category"].tolist() + ["미분류"]
 
         col_config = {
+            "_ID": None,
             "그래프 표시": st.column_config.CheckboxColumn("📊 그래프 표시", default=False),
             "Group": st.column_config.TextColumn("증권사/계좌 (대분류)"),
             "Category": st.column_config.SelectboxColumn("자산 분류 (소분류)", options=category_options),
@@ -465,25 +468,24 @@ def main():
             sel_categories = st.multiselect("🏷️ 소분류(자산 성격) 일괄 선택", display_df["Category"].unique(), help="선택한 소분류에 속한 모든 자산이 아래 요약과 그래프에 반영됩니다.")
 
         edited_display_reset = edited_display.reset_index()
-        # 그래프/요약 계산 시 '합계' 행은 제외 (display_df와의 인덱스 매칭을 위해)
-        valid_display = edited_display_reset[edited_display_reset["Group"] != "합계"]
+        # 그래프/요약 계산 시 '합계' 행은 제외
+        valid_display = edited_display_reset[edited_display_reset["_ID"] != -1]
         
-        selected_rows = valid_display.index[valid_display["그래프 표시"] == True].tolist()
+        selected_ids = valid_display.loc[valid_display["그래프 표시"] == True, "_ID"].tolist()
         
         # 일괄 선택된 그룹이나 카테고리가 있다면 선택 목록에 추가
         if sel_groups:
-            group_indices = valid_display.index[valid_display["Group"].isin(sel_groups)].tolist()
-            selected_rows.extend(group_indices)
+            group_ids = valid_display.loc[valid_display["Group"].isin(sel_groups), "_ID"].tolist()
+            selected_ids.extend(group_ids)
         if sel_categories:
-            cat_indices = valid_display.index[valid_display["Category"].isin(sel_categories)].tolist()
-            selected_rows.extend(cat_indices)
+            cat_ids = valid_display.loc[valid_display["Category"].isin(sel_categories), "_ID"].tolist()
+            selected_ids.extend(cat_ids)
             
-        selected_rows = list(set(selected_rows)) # 중복 제거
-
+        selected_ids = list(set(selected_ids)) # 중복 제거
 
         # --- 자산 총액 변동 그래프 (표 바로 아래 배치) ---
-        has_selection = len(selected_rows) > 0
-        target_df = valid_display.loc[selected_rows] if has_selection else valid_display
+        has_selection = len(selected_ids) > 0
+        target_df = valid_display[valid_display["_ID"].isin(selected_ids)] if has_selection else valid_display
         
         if has_selection:
             sel_tickers = target_df["Ticker"].tolist()
@@ -562,7 +564,7 @@ def main():
                 st.warning("선택한 기간에 해당하는 데이터가 없습니다.")
 
         # 요약 정보 표시 (선택된 자산 기준, 없으면 전체)
-        calc_df = display_df.loc[selected_rows] if (has_selection and len(selected_rows) < len(display_df)) else display_df
+        calc_df = display_df[display_df["_ID"].isin(selected_ids)] if (has_selection and len(selected_ids) < len(display_df)) else display_df
         
         total_purchase_krw = calc_df["Total Purchase (KRW)"].sum()
         total_current_krw = calc_df["Current Value (KRW)"].sum()
@@ -573,7 +575,7 @@ def main():
         total_fx_profit_krw = calc_df["FX Profit (KRW)"].sum()
 
         st.markdown("---")
-        if has_selection and len(selected_rows) < len(display_df):
+        if has_selection and len(selected_ids) < len(display_df):
             st.subheader("📌 선택된 자산 요약")
         else:
             st.subheader("총 자산 요약")
