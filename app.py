@@ -519,10 +519,11 @@ def main():
             st.caption("현재 보유중인 전체 자산 수량을 과거에도 동일하게 보유했다고 가정했을 때의 원화 가치 변동입니다.")
         
         unique_tickers = valid_display["Ticker"].unique().tolist()
+        unique_tickers.sort() # 정렬을 통해 st.cache_data가 순서 변경을 새로운 요청으로 착각하여 캐시를 깨는 현상(먹통) 방지
         if "USD/KRW" not in unique_tickers:
             unique_tickers.append("USD/KRW")
             
-        hist_data = fetch_history_data(unique_tickers)
+        hist_data = fetch_history_data(tuple(unique_tickers))
         
         if not hist_data.empty and "USD/KRW" in hist_data.columns:
             total_series = pd.Series(0.0, index=hist_data.index)
