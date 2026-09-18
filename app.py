@@ -327,10 +327,42 @@ def main():
         # 체크박스 컬럼 추가
         display_df.insert(0, "그래프 표시", False)
 
-        # 계산된 파생 컬럼들은 원본 숫자형(float) 그대로 유지하여 우측 정렬이 되도록 함
-        editor_df = display_df.copy()
+        def format_money(val, is_profit=False, is_pct=False):
+            if pd.isna(val): return ""
+            if is_profit:
+                if val > 0.01: return f"🔴 +{val:,.2f}%" if is_pct else f"🔴 +{val:,.0f}"
+                elif val < -0.01: return f"🔵 {val:,.2f}%" if is_pct else f"🔵 {val:,.0f}"
+                else: return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
+            else:
+                return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
 
-        # column_config를 이용한 포맷팅 (st.data_editor 용)
+        editor_df = display_df.copy()
+        
+        # 문자열로 변환하여 콤마와 기호, 이모티콘 색상을 적용 (스트림릿 편집기 한계상 텍스트는 좌측 정렬됨)
+        editor_df["Historical Rate (KRW)"] = editor_df["Historical Rate (KRW)"].apply(lambda x: f"₩{x:,.2f}")
+        editor_df["Total Purchase (USD)"] = editor_df["Total Purchase (USD)"].apply(lambda x: f"${x:,.2f}")
+        editor_df["Total Purchase (KRW)"] = editor_df["Total Purchase (KRW)"].apply(lambda x: f"₩{x:,.0f}")
+        
+        formatted_curr_prices = []
+        for _, r in editor_df.iterrows():
+            if r.get("Currency", "USD") == "USD":
+                formatted_curr_prices.append(f"${r['Current Price (USD)']:,.2f}")
+            else:
+                formatted_curr_prices.append(f"₩{r['Current Price (USD)']:,.0f}")
+        editor_df["Current Price (USD)"] = formatted_curr_prices
+        
+        editor_df["Current Value (USD)"] = editor_df["Current Value (USD)"].apply(lambda x: f"${x:,.2f}")
+        editor_df["Current Value (KRW)"] = editor_df["Current Value (KRW)"].apply(lambda x: f"₩{x:,.0f}")
+        
+        # 수익/손실 컬럼들 (색상 이모티콘 적용)
+        editor_df["Asset Profit (KRW)"] = editor_df["Asset Profit (KRW)"].apply(lambda x: format_money(x, True))
+        editor_df["FX Profit (KRW)"] = editor_df["FX Profit (KRW)"].apply(lambda x: format_money(x, True))
+        editor_df["Profit/Loss (KRW)"] = editor_df["Profit/Loss (KRW)"].apply(lambda x: format_money(x, True))
+        editor_df["Profit/Loss (%)"] = editor_df["Profit/Loss (%)"].apply(lambda x: format_money(x, True, True))
+
+        # 틀고정을 위해 Ticker를 인덱스로 설정
+        editor_df.set_index("Ticker", inplace=True)
+
         target_weights_df = load_target_weights()
         category_options = target_weights_df["Category"].tolist() + ["미분류"]
 
@@ -338,23 +370,22 @@ def main():
             "그래프 표시": st.column_config.CheckboxColumn("📊 그래프 표시", default=False),
             "Group": st.column_config.TextColumn("증권사/계좌 (대분류)"),
             "Category": st.column_config.SelectboxColumn("자산 분류 (소분류)", options=category_options),
-            "Ticker": st.column_config.TextColumn("티커"),
             "Purchase Date": st.column_config.TextColumn("매수 일자"),
             "Purchase Price": st.column_config.NumberColumn("매수 단가 (수정가능)"), 
             "Quantity": st.column_config.NumberColumn("수량 (수정가능)"),
             "Currency": st.column_config.SelectboxColumn("통화", options=["USD", "KRW"]),
             
-            # 파생 컬럼들 (기호를 헤더로 옮기고 format을 제거하여 콤마가 자동 표시되도록 함)
-            "Historical Rate (KRW)": st.column_config.NumberColumn("과거 환율 (₩)", disabled=True),
-            "Total Purchase (USD)": st.column_config.NumberColumn("총 매수 ($)", disabled=True),
-            "Total Purchase (KRW)": st.column_config.NumberColumn("총 매수 (₩)", disabled=True),
-            "Current Price (USD)": st.column_config.NumberColumn("현재 시세", disabled=True),
-            "Current Value (USD)": st.column_config.NumberColumn("현재 가치 ($)", disabled=True),
-            "Current Value (KRW)": st.column_config.NumberColumn("현재 가치 (₩)", disabled=True),
-            "Asset Profit (KRW)": st.column_config.NumberColumn("자산 손익 (₩)", disabled=True),
-            "FX Profit (KRW)": st.column_config.NumberColumn("환차익 (₩)", disabled=True),
-            "Profit/Loss (KRW)": st.column_config.NumberColumn("수익/손실 (₩)", disabled=True),
-            "Profit/Loss (%)": st.column_config.NumberColumn("수익률 (%)", disabled=True, format="%.2f"),
+            # 파생 컬럼들은 이제 문자열(TextColumn)이 됨
+            "Historical Rate (KRW)": st.column_config.TextColumn("과거 환율", disabled=True),
+            "Total Purchase (USD)": st.column_config.TextColumn("총 매수(USD)", disabled=True),
+            "Total Purchase (KRW)": st.column_config.TextColumn("총 매수(KRW)", disabled=True),
+            "Current Price (USD)": st.column_config.TextColumn("현재 시세", disabled=True),
+            "Current Value (USD)": st.column_config.TextColumn("현재 가치(USD)", disabled=True),
+            "Current Value (KRW)": st.column_config.TextColumn("현재 가치(KRW)", disabled=True),
+            "Asset Profit (KRW)": st.column_config.TextColumn("자산 손익(KRW)", disabled=True),
+            "FX Profit (KRW)": st.column_config.TextColumn("환차익(KRW)", disabled=True),
+            "Profit/Loss (KRW)": st.column_config.TextColumn("수익/손실(KRW)", disabled=True),
+            "Profit/Loss (%)": st.column_config.TextColumn("수익률(%)", disabled=True),
         }
         
         st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
@@ -370,7 +401,7 @@ def main():
         )
         
         if st.button("수정/삭제 변경사항 저장"):
-            edited_base = edited_display[base_cols]
+            edited_base = edited_display.reset_index()[base_cols]
             save_assets(edited_base)
             st.success("자산 정보가 성공적으로 업데이트 되었습니다!")
             st.rerun()
@@ -383,14 +414,15 @@ def main():
         with col_sel2:
             sel_categories = st.multiselect("🏷️ 소분류(자산 성격) 일괄 선택", display_df["Category"].unique(), help="선택한 소분류에 속한 모든 자산이 아래 요약과 그래프에 반영됩니다.")
 
-        selected_rows = edited_display.index[edited_display["그래프 표시"] == True].tolist()
+        edited_display_reset = edited_display.reset_index()
+        selected_rows = edited_display_reset.index[edited_display_reset["그래프 표시"] == True].tolist()
         
         # 일괄 선택된 그룹이나 카테고리가 있다면 선택 목록에 추가
         if sel_groups:
-            group_indices = edited_display.index[edited_display["Group"].isin(sel_groups)].tolist()
+            group_indices = edited_display_reset.index[edited_display_reset["Group"].isin(sel_groups)].tolist()
             selected_rows.extend(group_indices)
         if sel_categories:
-            cat_indices = edited_display.index[edited_display["Category"].isin(sel_categories)].tolist()
+            cat_indices = edited_display_reset.index[edited_display_reset["Category"].isin(sel_categories)].tolist()
             selected_rows.extend(cat_indices)
             
         selected_rows = list(set(selected_rows)) # 중복 제거
@@ -398,7 +430,7 @@ def main():
 
         # --- 자산 총액 변동 그래프 (표 바로 아래 배치) ---
         has_selection = len(selected_rows) > 0
-        target_df = edited_display.loc[selected_rows] if has_selection else edited_display
+        target_df = edited_display_reset.loc[selected_rows] if has_selection else edited_display_reset
         
         if has_selection:
             sel_tickers = target_df["Ticker"].tolist()
@@ -557,14 +589,26 @@ def main():
             display_table = table_df[["Category", "Target (%)", "Ratio (%)", "비중 차이", "Current Value (KRW)", "과부족 금액"]].copy()
             display_table.columns = ["자산 분류", "목표 비중 (%)", "현재 비중 (%)", "비중 차이 (%p)", "현재 금액 (₩)", "과부족 금액 (₩)"]
             
+            # 총계 행 추가
+            total_row = pd.DataFrame([{
+                "자산 분류": "총계",
+                "목표 비중 (%)": display_table["목표 비중 (%)"].sum(),
+                "현재 비중 (%)": display_table["현재 비중 (%)"].sum(),
+                "비중 차이 (%p)": display_table["비중 차이 (%p)"].sum(),
+                "현재 금액 (₩)": display_table["현재 금액 (₩)"].sum(),
+                "과부족 금액 (₩)": display_table["과부족 금액 (₩)"].sum()
+            }])
+            display_table = pd.concat([display_table, total_row], ignore_index=True)
+            
             def style_category(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
                 for col in df.columns:
                     if col in ["비중 차이 (%p)", "과부족 금액 (₩)"]:
-                        # 마이너스는 빨간색, 플러스는 파란색
-                        styles[col] = df[col].apply(lambda x: 'color: #ff4b4b; text-align: right;' if x < -0.01 else ('color: #0068c9; text-align: right;' if x > 0.01 else 'text-align: right;'))
+                        styles[col] = df.apply(lambda r: ('color: #ff4b4b; ' if r[col] < -0.01 else ('color: #0068c9; ' if r[col] > 0.01 else '')) + 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["자산 분류"] == "총계" else ''), axis=1)
                     elif col != "자산 분류":
-                        styles[col] = 'text-align: right;'
+                        styles[col] = df.apply(lambda r: 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["자산 분류"] == "총계" else ''), axis=1)
+                    else:
+                        styles[col] = df.apply(lambda r: 'font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["자산 분류"] == "총계" else '', axis=1)
                 return styles
             
             styled_display = display_table.style.format({
@@ -604,11 +648,21 @@ def main():
             g_display.columns = ["계좌/증권사 (대분류)", "현재 금액 (₩)", "현재 비중 (%)"]
             g_display = g_display[["계좌/증권사 (대분류)", "현재 비중 (%)", "현재 금액 (₩)"]]
             
+            # 총계 행 추가
+            total_g_row = pd.DataFrame([{
+                "계좌/증권사 (대분류)": "총계",
+                "현재 비중 (%)": g_display["현재 비중 (%)"].sum(),
+                "현재 금액 (₩)": g_display["현재 금액 (₩)"].sum()
+            }])
+            g_display = pd.concat([g_display, total_g_row], ignore_index=True)
+            
             def style_group(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
                 for col in df.columns:
                     if col != "계좌/증권사 (대분류)":
-                        styles[col] = 'text-align: right;'
+                        styles[col] = df.apply(lambda r: 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["계좌/증권사 (대분류)"] == "총계" else ''), axis=1)
+                    else:
+                        styles[col] = df.apply(lambda r: 'font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["계좌/증권사 (대분류)"] == "총계" else '', axis=1)
                 return styles
                 
             styled_g = g_display.style.format({
