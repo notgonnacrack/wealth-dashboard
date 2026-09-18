@@ -336,40 +336,9 @@ def main():
         # 체크박스 컬럼 추가
         display_df.insert(0, "그래프 표시", False)
 
-        def format_money(val, is_profit=False, is_pct=False):
-            if pd.isna(val): return ""
-            if is_profit:
-                if val > 0.01: return f"🔴 +{val:,.2f}%" if is_pct else f"🔴 +{val:,.0f}"
-                elif val < -0.01: return f"🔵 {val:,.2f}%" if is_pct else f"🔵 {val:,.0f}"
-                else: return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
-            else:
-                return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
-
         editor_df = display_df.copy()
         
-        # 문자열로 변환하여 콤마와 기호, 이모티콘 색상을 적용 (스트림릿 편집기 한계상 텍스트는 좌측 정렬됨)
-        editor_df["Historical Rate (KRW)"] = editor_df["Historical Rate (KRW)"].apply(lambda x: f"₩{x:,.2f}")
-        editor_df["Total Purchase (USD)"] = editor_df["Total Purchase (USD)"].apply(lambda x: f"${x:,.2f}")
-        editor_df["Total Purchase (KRW)"] = editor_df["Total Purchase (KRW)"].apply(lambda x: f"₩{x:,.0f}")
-        
-        formatted_curr_prices = []
-        for _, r in editor_df.iterrows():
-            if r.get("Currency", "USD") == "USD":
-                formatted_curr_prices.append(f"${r['Current Price (USD)']:,.2f}")
-            else:
-                formatted_curr_prices.append(f"₩{r['Current Price (USD)']:,.0f}")
-        editor_df["Current Price (USD)"] = formatted_curr_prices
-        
-        editor_df["Current Value (USD)"] = editor_df["Current Value (USD)"].apply(lambda x: f"${x:,.2f}")
-        editor_df["Current Value (KRW)"] = editor_df["Current Value (KRW)"].apply(lambda x: f"₩{x:,.0f}")
-        
-        # 수익/손실 컬럼들 (색상 이모티콘 적용)
-        editor_df["Asset Profit (KRW)"] = editor_df["Asset Profit (KRW)"].apply(lambda x: format_money(x, True))
-        editor_df["FX Profit (KRW)"] = editor_df["FX Profit (KRW)"].apply(lambda x: format_money(x, True))
-        editor_df["Profit/Loss (KRW)"] = editor_df["Profit/Loss (KRW)"].apply(lambda x: format_money(x, True))
-        editor_df["Profit/Loss (%)"] = editor_df["Profit/Loss (%)"].apply(lambda x: format_money(x, True, True))
-
-        # 틀고정을 위해 Ticker를 인덱스로 설정
+        # 틀고정(최좌측 열 고정)을 위해 Ticker를 인덱스로 설정
         editor_df.set_index("Ticker", inplace=True)
 
         target_weights_df = load_target_weights()
@@ -384,17 +353,17 @@ def main():
             "Quantity": st.column_config.NumberColumn("수량 (수정가능)"),
             "Currency": st.column_config.SelectboxColumn("통화", options=["USD", "KRW"]),
             
-            # 파생 컬럼들은 이제 문자열(TextColumn)이 됨
-            "Historical Rate (KRW)": st.column_config.TextColumn("과거 환율", disabled=True),
-            "Total Purchase (USD)": st.column_config.TextColumn("총 매수(USD)", disabled=True),
-            "Total Purchase (KRW)": st.column_config.TextColumn("총 매수(KRW)", disabled=True),
-            "Current Price (USD)": st.column_config.TextColumn("현재 시세", disabled=True),
-            "Current Value (USD)": st.column_config.TextColumn("현재 가치(USD)", disabled=True),
-            "Current Value (KRW)": st.column_config.TextColumn("현재 가치(KRW)", disabled=True),
-            "Asset Profit (KRW)": st.column_config.TextColumn("자산 손익(KRW)", disabled=True),
-            "FX Profit (KRW)": st.column_config.TextColumn("환차익(KRW)", disabled=True),
-            "Profit/Loss (KRW)": st.column_config.TextColumn("수익/손실(KRW)", disabled=True),
-            "Profit/Loss (%)": st.column_config.TextColumn("수익률(%)", disabled=True),
+            # 우측 정렬과 콤마를 위해 다시 숫자형(NumberColumn)으로 설정 (스트림릿 한계상 셀별 색상 지정 불가)
+            "Historical Rate (KRW)": st.column_config.NumberColumn("과거 환율 (₩)", disabled=True),
+            "Total Purchase (USD)": st.column_config.NumberColumn("총 매수 ($)", disabled=True),
+            "Total Purchase (KRW)": st.column_config.NumberColumn("총 매수 (₩)", disabled=True),
+            "Current Price (USD)": st.column_config.NumberColumn("현재 시세", disabled=True),
+            "Current Value (USD)": st.column_config.NumberColumn("현재 가치 ($)", disabled=True),
+            "Current Value (KRW)": st.column_config.NumberColumn("현재 가치 (₩)", disabled=True),
+            "Asset Profit (KRW)": st.column_config.NumberColumn("자산 손익 (₩)", disabled=True),
+            "FX Profit (KRW)": st.column_config.NumberColumn("환차익 (₩)", disabled=True),
+            "Profit/Loss (KRW)": st.column_config.NumberColumn("수익/손실 (₩)", disabled=True),
+            "Profit/Loss (%)": st.column_config.NumberColumn("수익률 (%)", disabled=True, format="%.2f"),
         }
         
         st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
@@ -405,7 +374,7 @@ def main():
             column_config=col_config,
             use_container_width=True,
             num_rows="dynamic",
-            height=int((len(editor_df) + 2) * 35) + 3,
+            height=600,  # 표 높이를 제한하여 자체 스크롤을 생성해야 헤더(최상단 행)가 고정됨
             key="main_table_editor"
         )
         
@@ -453,7 +422,7 @@ def main():
             st.subheader("📈 현재 전체 포트폴리오 가치 변동 추이")
             st.caption("현재 보유중인 전체 자산 수량을 과거에도 동일하게 보유했다고 가정했을 때의 원화 가치 변동입니다.")
         
-        unique_tickers = edited_display["Ticker"].unique().tolist()
+        unique_tickers = edited_display_reset["Ticker"].unique().tolist()
         if "USD/KRW" not in unique_tickers:
             unique_tickers.append("USD/KRW")
             
