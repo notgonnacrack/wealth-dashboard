@@ -191,7 +191,35 @@ def fetch_history_data(tickers):
     hist_df = hist_df.ffill().bfill() # 누락된 휴일 데이터 채우기
     return hist_df
 
+def check_password():
+    """Returns `True` if the user had the correct password."""
+    # 비밀번호 설정이 안 되어 있다면 일단 통과시킵니다.
+    if "app_password" not in st.secrets:
+        return True
+
+    def password_entered():
+        if st.session_state["password"] == st.secrets["app_password"]:
+            st.session_state["password_correct"] = True
+            del st.session_state["password"]  # 보안을 위해 세션에서 비밀번호 삭제
+        else:
+            st.session_state["password_correct"] = False
+
+    if "password_correct" not in st.session_state:
+        st.title("🔒 Security")
+        st.text_input("대시보드 접속 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        return False
+    elif not st.session_state["password_correct"]:
+        st.title("🔒 Security")
+        st.text_input("대시보드 접속 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        st.error("😕 비밀번호가 틀렸습니다. 다시 시도해주세요.")
+        return False
+    else:
+        return True
+
 def main():
+    if not check_password():
+        st.stop() # 비밀번호가 틀리면 여기서 앱 실행을 멈춤
+
     st.title("📈 Personal Wealth Dashboard")
 
     hide_amounts = st.sidebar.toggle("👀 금액 숨기기 (공공장소 모드)", value=False)
