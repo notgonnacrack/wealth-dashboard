@@ -392,6 +392,7 @@ def main():
             column_config=col_config,
             use_container_width=True,
             num_rows="dynamic",
+            height=int((len(editor_df) + 2) * 35) + 3,
             key="main_table_editor"
         )
         
@@ -583,7 +584,7 @@ def main():
             display_table["현재 금액"] = display_table["현재 금액"].map("₩{:,.0f}".format)
             display_table["과부족 금액"] = display_table["과부족 금액"].apply(lambda x: f"₩{x:+,.0f}")
             
-            st.dataframe(display_table, use_container_width=True, hide_index=True)
+            st.dataframe(display_table, use_container_width=True, hide_index=True, height=int((len(display_table) + 1.5) * 35))
 
         # 2. 계좌/증권사(대분류)별 비율 분석
         st.markdown("---")
@@ -608,7 +609,7 @@ def main():
             g_display = g_display[["계좌/증권사 (대분류)", "현재 비중", "현재 금액"]]
             g_display["현재 비중"] = g_display["현재 비중"].map("{:.1f}%".format)
             g_display["현재 금액"] = g_display["현재 금액"].map("₩{:,.0f}".format)
-            st.dataframe(g_display, use_container_width=True, hide_index=True)
+            st.dataframe(g_display, use_container_width=True, hide_index=True, height=int((len(g_display) + 1.5) * 35))
 
         # 자산 총액 변동 그래프
 
