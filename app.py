@@ -445,23 +445,14 @@ def main():
         
         st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
         
-        def apply_select_all(val):
-            st.session_state.select_all_toggle = val
-            if "main_table_editor" in st.session_state:
-                state = st.session_state["main_table_editor"]
-                if "edited_rows" in state:
-                    for row_idx in list(state["edited_rows"].keys()):
-                        if "그래프 표시" in state["edited_rows"][row_idx]:
-                            del state["edited_rows"][row_idx]["그래프 표시"]
-
         col_btn1, col_btn2, _ = st.columns([1, 1, 3])
         with col_btn1:
             if st.button("☑️ 차트 일괄 선택", use_container_width=True, help="모든 자산을 차트에 표시합니다."):
-                apply_select_all(True)
+                st.session_state.select_all_toggle = True
                 st.rerun()
         with col_btn2:
             if st.button("☐ 차트 일괄 해제", use_container_width=True, help="차트 표시를 모두 해제합니다."):
-                apply_select_all(False)
+                st.session_state.select_all_toggle = False
                 st.rerun()
 
         base_cols = ["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"]
