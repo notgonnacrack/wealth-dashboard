@@ -416,7 +416,7 @@ def main():
 
         # --- 자산 총액 변동 그래프 (표 바로 아래 배치) ---
         has_selection = len(selected_rows) > 0
-        target_df = edited_display.iloc[selected_rows] if has_selection else edited_display
+        target_df = edited_display.loc[selected_rows] if has_selection else edited_display
         
         if has_selection:
             sel_tickers = target_df["Ticker"].tolist()
@@ -495,7 +495,7 @@ def main():
                 st.warning("선택한 기간에 해당하는 데이터가 없습니다.")
 
         # 요약 정보 표시 (선택된 자산 기준, 없으면 전체)
-        calc_df = display_df.iloc[selected_rows] if (has_selection and len(selected_rows) < len(display_df)) else display_df
+        calc_df = display_df.loc[selected_rows] if (has_selection and len(selected_rows) < len(display_df)) else display_df
         
         total_purchase_krw = calc_df["Total Purchase (KRW)"].sum()
         total_current_krw = calc_df["Current Value (KRW)"].sum()
