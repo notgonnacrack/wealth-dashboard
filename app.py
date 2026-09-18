@@ -222,8 +222,8 @@ def main():
 
     st.title("📈 Personal Wealth Dashboard")
 
-    hide_amounts = st.sidebar.toggle("👀 금액 숨기기 (공공장소 모드)", value=False)
-    st.sidebar.markdown("---")
+    hide_amounts = st.toggle("👀 금액 숨기기 (공공장소 모드)", value=False)
+    st.markdown("---")
 
     # 2. 현재 환율 가져오기
     current_krw_rate = get_current_data("USD/KRW")
@@ -416,7 +416,7 @@ def main():
 
         # --- 자산 총액 변동 그래프 (표 바로 아래 배치) ---
         has_selection = len(selected_rows) > 0
-        target_df = edited_display[edited_display["그래프 표시"] == True] if has_selection else edited_display
+        target_df = edited_display.iloc[selected_rows] if has_selection else edited_display
         
         if has_selection:
             sel_tickers = target_df["Ticker"].tolist()
