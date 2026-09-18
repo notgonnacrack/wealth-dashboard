@@ -536,11 +536,16 @@ def main():
         st.subheader("📊 자산 포트폴리오 비중 (소분류)")
         
         target_weights_df = load_target_weights()
+        target_categories = target_weights_df["Category"].tolist()
         
-        category_df = display_df.groupby("Category")["Current Value (KRW)"].sum().reset_index()
-        category_df["Ratio (%)"] = (category_df["Current Value (KRW)"] / total_current_krw) * 100 if total_current_krw > 0 else 0
+        # 목표 비중에 정의된 카테고리에 속한 자산만 필터링하여 총합 계산
+        filtered_display_df = display_df[display_df["Category"].isin(target_categories)]
+        target_total_krw = filtered_display_df["Current Value (KRW)"].sum()
         
-        # 목표 비중과 비교할 수 있도록 병합
+        category_df = filtered_display_df.groupby("Category")["Current Value (KRW)"].sum().reset_index()
+        category_df["Ratio (%)"] = (category_df["Current Value (KRW)"] / target_total_krw) * 100 if target_total_krw > 0 else 0
+        
+        # 목표 비중과 비교할 수 있도록 병합 (정의된 카테고리가 모두 나오도록)
         category_df = pd.merge(target_weights_df, category_df, on="Category", how="left").fillna(0)
         
         col_chart, col_table = st.columns([1, 1.3])
@@ -560,9 +565,9 @@ def main():
         with col_table:
             st.write("<br>", unsafe_allow_html=True)
             
-            # 과부족 계산
+            # 과부족 계산 (전체 자산이 아닌 '목표에 정의된 자산들의 총합' 기준)
             table_df = category_df.copy()
-            table_df["목표 금액"] = (total_current_krw * table_df["Target (%)"] / 100)
+            table_df["목표 금액"] = (target_total_krw * table_df["Target (%)"] / 100)
             table_df["과부족 금액"] = table_df["Current Value (KRW)"] - table_df["목표 금액"]
             table_df["비중 차이"] = table_df["Ratio (%)"] - table_df["Target (%)"]
             
