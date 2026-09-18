@@ -55,6 +55,15 @@ def load_assets():
             df.insert(0, "Group", "기본계좌")
             save_assets(df)
             
+        # ArrowTypeError 방지를 위한 데이터 타입 정리
+        df["Group"] = df["Group"].fillna("기본계좌").astype(str)
+        df["Category"] = df["Category"].fillna("미분류").astype(str)
+        df["Ticker"] = df["Ticker"].fillna("").astype(str)
+        df["Purchase Date"] = df["Purchase Date"].fillna("").astype(str)
+        df["Currency"] = df["Currency"].fillna("USD").astype(str)
+        df["Purchase Price"] = pd.to_numeric(df["Purchase Price"], errors='coerce').fillna(0.0)
+        df["Quantity"] = pd.to_numeric(df["Quantity"], errors='coerce').fillna(0.0)
+            
         return df
     except Exception as e:
         print(f"Error loading assets from sheets: {e}")
