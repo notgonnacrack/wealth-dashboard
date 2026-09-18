@@ -377,14 +377,16 @@ def main():
         }])
         editor_df = pd.concat([editor_df, total_row], ignore_index=True)
         
-        # 틀고정(대분류, 소분류, 티커 모두 고정)을 위해 MultiIndex 설정
-        editor_df.set_index(["Group", "Category", "Ticker"], inplace=True)
+        # 틀고정은 스트림릿 편집기 한계상 단일 열(티커)만 지원하므로 티커만 고정
+        editor_df.set_index("Ticker", inplace=True)
 
         target_weights_df = load_target_weights()
         category_options = target_weights_df["Category"].tolist() + ["미분류"]
 
         col_config = {
             "그래프 표시": st.column_config.CheckboxColumn("📊 그래프 표시", default=False),
+            "Group": st.column_config.TextColumn("증권사/계좌 (대분류)"),
+            "Category": st.column_config.SelectboxColumn("자산 분류 (소분류)", options=category_options),
             "Purchase Date": st.column_config.TextColumn("매수 일자"),
             "Purchase Price": st.column_config.NumberColumn("매수 단가 (수정가능)"), 
             "Quantity": st.column_config.NumberColumn("수량 (수정가능)"),
@@ -403,13 +405,14 @@ def main():
             "Profit/Loss (%)": st.column_config.NumberColumn("수익률 (%)", disabled=True, format="%.2f"),
         }
         
-        st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
+        st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
 
         base_cols = ["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"]
         edited_display = st.data_editor(
             editor_df,
             column_config=col_config,
             use_container_width=True,
+            num_rows="dynamic",
             height=600,
             key="main_table_editor"
         )
