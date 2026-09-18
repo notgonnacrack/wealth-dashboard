@@ -78,7 +78,7 @@ def save_assets(df):
         print(f"Error saving assets to sheets: {e}")
         st.error(f"구글 시트 저장 실패: {e}")
 
-def load_target_weights():
+def get_targets_raw():
     try:
         conn = get_gsheets_connection()
         df = conn.read(worksheet="Targets", ttl="0m")
@@ -94,6 +94,25 @@ def load_target_weights():
             {"Category": "채권", "Target (%)": 15.0},
             {"Category": "금", "Target (%)": 15.0}
         ])
+
+def load_target_weights():
+    df = get_targets_raw()
+    return df[df["Category"] != "_AVAILABLE_CASH_"].copy()
+
+def get_available_cash():
+    df = get_targets_raw()
+    cash_row = df[df["Category"] == "_AVAILABLE_CASH_"]
+    if not cash_row.empty:
+        return float(cash_row["Target (%)"].iloc[0])
+    return 0.0
+
+def save_available_cash(cash_amount):
+    df = get_targets_raw()
+    if "_AVAILABLE_CASH_" in df["Category"].values:
+        df.loc[df["Category"] == "_AVAILABLE_CASH_", "Target (%)"] = float(cash_amount)
+    else:
+        df = pd.concat([df, pd.DataFrame([{"Category": "_AVAILABLE_CASH_", "Target (%)": float(cash_amount)}])], ignore_index=True)
+    save_target_weights(df)
 
 def save_target_weights(df):
     try:
@@ -603,15 +622,22 @@ def main():
         # 1. 자산 분류(소분류)별 비율 분석
         st.markdown("---")
         
-        col_title, col_cash = st.columns([1.2, 1])
+        col_title, col_cash, col_cash_btn = st.columns([1.2, 0.8, 0.2])
         with col_title:
             st.subheader("📊 자산 포트폴리오 비중 (소분류)")
+            
+        saved_cash = get_available_cash()
         with col_cash:
             available_cash = st.number_input(
                 "💵 추가 투자 가능 여유 현금 (₩)", 
-                min_value=0, value=0, step=1000000,
+                min_value=0, value=int(saved_cash), step=1000000,
                 help="아직 자산으로 매수하지 않은 현금을 입력하면, 이 현금을 포함한 총액을 기준으로 목표 비중에 맞추기 위해 어떤 자산을 얼마나 더 사야 하는지(과부족 금액) 자동 계산해 줍니다."
             )
+        with col_cash_btn:
+            st.write("<br>", unsafe_allow_html=True)
+            if st.button("저장", key="save_cash_btn"):
+                save_available_cash(available_cash)
+                st.rerun()
         
         target_weights_df = load_target_weights()
         target_categories = target_weights_df["Category"].tolist()
@@ -819,10 +845,16 @@ def main():
             }
         )
         
-        if st.button("목표 비중 저장", type="primary"):
-            save_target_weights(edited_targets)
-            st.success("새로운 자산 분류와 목표 비중이 저장되었습니다!")
-            st.rerun()
+        if st.button("목표 비중 저장"):
+            if abs(edited_targets["Target (%)"].sum() - 100.0) < 0.1:
+                cash_amount = get_available_cash()
+                if cash_amount > 0:
+                    edited_targets = pd.concat([edited_targets, pd.DataFrame([{"Category": "_AVAILABLE_CASH_", "Target (%)": cash_amount}])], ignore_index=True)
+                save_target_weights(edited_targets)
+                st.success("목표 비중이 저장되었습니다!")
+                st.rerun()
+            else:
+                st.error(f"비중 합계가 100%가 아닙니다! (현재: {edited_targets['Target (%)'].sum():.1f}%)")
 
 if __name__ == "__main__":
     main()
