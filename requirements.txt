@@ -4,3 +4,4 @@ plotly
 beautifulsoup4
 requests
 st-gsheets-connection
+finance-datareader
