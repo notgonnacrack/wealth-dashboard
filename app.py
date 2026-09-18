@@ -225,54 +225,6 @@ def main():
     hide_amounts = st.sidebar.toggle("👀 금액 숨기기 (공공장소 모드)", value=False)
     st.sidebar.markdown("---")
 
-    # 1. 자산 입력 폼
-    st.sidebar.header("새로운 자산 추가")
-    with st.sidebar.form("add_asset_form"):
-        target_weights_df = load_target_weights()
-        category_options = target_weights_df["Category"].tolist() + ["미분류"]
-        
-        group = st.text_input("증권사/계좌 (대분류)", "기본계좌")
-        category = st.selectbox("자산 분류 (소분류)", category_options)
-        ticker_input = st.text_input("티커 또는 메트라이프 공시 URL", "")
-        purchase_date_str = st.text_input("구매 일자 (YYYY-MM-DD)", datetime.today().strftime("%Y-%m-%d"))
-        purchase_price = st.number_input("구입 금액 (1주당 가격 또는 기준가)", min_value=0.0, format="%.2f")
-        currency = st.radio("구입 통화", ["USD (달러)", "KRW (원화)"], horizontal=True)
-        quantity = st.number_input("수량", min_value=0.0, format="%.4f")
-        submit_button = st.form_submit_button(label="추가")
-
-        if submit_button:
-            ticker = ticker_input.strip()
-            if not ticker.startswith("http"):
-                ticker = ticker.upper()
-                
-            # 날짜 형식 검증
-            try:
-                valid_date = datetime.strptime(purchase_date_str, "%Y-%m-%d")
-                is_valid_date = True
-            except ValueError:
-                is_valid_date = False
-                
-            if ticker and purchase_price > 0 and quantity > 0 and is_valid_date:
-                df = load_assets()
-                currency_code = "USD" if "USD" in currency else "KRW"
-                new_row = pd.DataFrame([{
-                    "Group": group,
-                    "Category": category,
-                    "Ticker": ticker,
-                    "Purchase Date": valid_date.strftime("%Y-%m-%d"),
-                    "Purchase Price": purchase_price,
-                    "Quantity": quantity,
-                    "Currency": currency_code
-                }])
-                df = pd.concat([df, new_row], ignore_index=True)
-                save_assets(df)
-                st.sidebar.success(f"{ticker} 자산이 추가되었습니다!")
-                st.rerun()
-            else:
-                st.sidebar.error("모든 항목을 올바르게 입력해주세요. (날짜는 YYYY-MM-DD 형식)")
-
-
-
     # 2. 현재 환율 가져오기
     current_krw_rate = get_current_data("USD/KRW")
     if current_krw_rate is None:
@@ -427,6 +379,13 @@ def main():
         
         st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
         
+        # 일괄 선택 옵션 추가
+        col_sel1, col_sel2 = st.columns(2)
+        with col_sel1:
+            sel_groups = st.multiselect("📂 대분류(증권사/계좌) 일괄 선택", display_df["Group"].unique(), help="선택한 대분류에 속한 모든 자산이 아래 요약과 그래프에 반영됩니다.")
+        with col_sel2:
+            sel_categories = st.multiselect("🏷️ 소분류(자산 성격) 일괄 선택", display_df["Category"].unique(), help="선택한 소분류에 속한 모든 자산이 아래 요약과 그래프에 반영됩니다.")
+
         base_cols = ["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"]
         edited_display = st.data_editor(
             editor_df,
@@ -443,6 +402,17 @@ def main():
             st.rerun()
 
         selected_rows = edited_display.index[edited_display["그래프 표시"] == True].tolist()
+        
+        # 일괄 선택된 그룹이나 카테고리가 있다면 선택 목록에 추가
+        if sel_groups:
+            group_indices = edited_display.index[edited_display["Group"].isin(sel_groups)].tolist()
+            selected_rows.extend(group_indices)
+        if sel_categories:
+            cat_indices = edited_display.index[edited_display["Category"].isin(sel_categories)].tolist()
+            selected_rows.extend(cat_indices)
+            
+        selected_rows = list(set(selected_rows)) # 중복 제거
+
 
         # --- 자산 총액 변동 그래프 (표 바로 아래 배치) ---
         has_selection = len(selected_rows) > 0
@@ -524,17 +494,22 @@ def main():
             else:
                 st.warning("선택한 기간에 해당하는 데이터가 없습니다.")
 
-        # 요약 정보 표시
-        total_purchase_krw = sum(purch_krw)
-        total_current_krw = sum(curr_krw_vals)
-        total_current_usd = sum(curr_usd_vals)
+        # 요약 정보 표시 (선택된 자산 기준, 없으면 전체)
+        calc_df = display_df.iloc[selected_rows] if (has_selection and len(selected_rows) < len(display_df)) else display_df
+        
+        total_purchase_krw = calc_df["Total Purchase (KRW)"].sum()
+        total_current_krw = calc_df["Current Value (KRW)"].sum()
+        total_current_usd = calc_df["Current Value (USD)"].sum()
         total_profit_krw = total_current_krw - total_purchase_krw
         total_profit_pct = (total_profit_krw / total_purchase_krw) * 100 if total_purchase_krw > 0 else 0
-        total_asset_profit_krw = sum(asset_profits_krw)
-        total_fx_profit_krw = sum(fx_profits_krw)
+        total_asset_profit_krw = calc_df["Asset Profit (KRW)"].sum()
+        total_fx_profit_krw = calc_df["FX Profit (KRW)"].sum()
 
         st.markdown("---")
-        st.subheader("총 자산 요약")
+        if has_selection and len(selected_rows) < len(display_df):
+            st.subheader("📌 선택된 자산 요약")
+        else:
+            st.subheader("총 자산 요약")
         
         def display_metric(label, value, is_pct=False, prefix="₩"):
             if hide_amounts:
@@ -636,7 +611,56 @@ def main():
 
 
     else:
-        st.info("왼쪽 사이드바에서 자산을 추가해주세요.")
+        st.info("아래 폼에서 자산을 추가하거나 구글 시트에서 입력해주세요.")
+
+    st.markdown("---")
+    st.header("새로운 자산 추가")
+    with st.form("add_asset_form"):
+        target_weights_df = load_target_weights()
+        category_options = target_weights_df["Category"].tolist() + ["미분류"]
+        
+        col_f1, col_f2 = st.columns(2)
+        with col_f1:
+            group = st.text_input("증권사/계좌 (대분류)", "기본계좌")
+            category = st.selectbox("자산 분류 (소분류)", category_options)
+            ticker_input = st.text_input("티커 또는 메트라이프 공시 URL", "")
+            purchase_date_str = st.text_input("구매 일자 (YYYY-MM-DD)", datetime.today().strftime("%Y-%m-%d"))
+        with col_f2:
+            purchase_price = st.number_input("구입 금액 (1주당 가격 또는 기준가)", min_value=0.0, format="%.2f")
+            currency = st.radio("구입 통화", ["USD (달러)", "KRW (원화)"], horizontal=True)
+            quantity = st.number_input("수량", min_value=0.0, format="%.4f")
+            
+        submit_button = st.form_submit_button(label="추가")
+
+        if submit_button:
+            ticker = ticker_input.strip()
+            if not ticker.startswith("http"):
+                ticker = ticker.upper()
+                
+            try:
+                valid_date = datetime.strptime(purchase_date_str, "%Y-%m-%d")
+                is_valid_date = True
+            except ValueError:
+                is_valid_date = False
+                
+            if ticker and purchase_price > 0 and quantity > 0 and is_valid_date:
+                df = load_assets()
+                currency_code = "USD" if "USD" in currency else "KRW"
+                new_row = pd.DataFrame([{
+                    "Group": group,
+                    "Category": category,
+                    "Ticker": ticker,
+                    "Purchase Date": valid_date.strftime("%Y-%m-%d"),
+                    "Purchase Price": purchase_price,
+                    "Quantity": quantity,
+                    "Currency": currency_code
+                }])
+                df = pd.concat([df, new_row], ignore_index=True)
+                save_assets(df)
+                st.success(f"{ticker} 자산이 추가되었습니다!")
+                st.rerun()
+            else:
+                st.error("모든 항목을 올바르게 입력해주세요. (날짜는 YYYY-MM-DD 형식)")
 
     st.markdown("---")
     with st.expander("🎯 자산 분류 및 목표 비중 커스텀 설정", expanded=False):
