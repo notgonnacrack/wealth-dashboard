@@ -435,17 +435,18 @@ def main():
         editor_df["Profit/Loss (KRW)"] = editor_df["Profit/Loss (KRW)"].apply(lambda x: format_money(x, True))
         editor_df["Profit/Loss (%)"] = editor_df["Profit/Loss (%)"].apply(lambda x: format_money(x, True, True))
         
-        # 틀고정은 스트림릿 편집기 한계상 단일 열(티커)만 지원하므로 티커만 고정
-        editor_df.set_index("Ticker", inplace=True)
+        # 데이터 에디터 인덱스 버그 방지 (동일 티커가 여러 개일 때 꼬이는 현상)
+        # 티커 대신 고유값(_ID)을 인덱스로 사용하되, 화면에서는 숨김 처리
+        editor_df.set_index("_ID", inplace=True)
 
         target_weights_df = load_target_weights()
         category_options = target_weights_df["Category"].tolist() + ["미분류"]
 
         col_config = {
-            "_ID": None,
             "그래프 표시": st.column_config.CheckboxColumn("📊 그래프 표시", default=False),
             "Group": st.column_config.TextColumn("증권사/계좌 (대분류)"),
             "Category": st.column_config.SelectboxColumn("자산 분류 (소분류)", options=category_options),
+            "Ticker": st.column_config.TextColumn("티커"),
             "Purchase Date": st.column_config.TextColumn("매수 일자"),
             "Purchase Price": st.column_config.NumberColumn("매수 단가 (수정가능)"), 
             "Quantity": st.column_config.NumberColumn("수량 (수정가능)"),
@@ -473,6 +474,7 @@ def main():
             use_container_width=True,
             num_rows="dynamic",
             height=600,
+            hide_index=True,
             key="main_table_editor"
         )
         
