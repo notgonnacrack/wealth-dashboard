@@ -58,7 +58,7 @@ def load_assets():
         # ArrowTypeError 방지를 위한 데이터 타입 정리
         df["Group"] = df["Group"].fillna("기본계좌").astype(str)
         df["Category"] = df["Category"].fillna("미분류").astype(str)
-        df["Ticker"] = df["Ticker"].fillna("").astype(str)
+        df["Ticker"] = df["Ticker"].fillna("").astype(str).str.strip()
         df["Purchase Date"] = df["Purchase Date"].fillna("").astype(str)
         df["Currency"] = df["Currency"].fillna("USD").astype(str)
         df["Purchase Price"] = pd.to_numeric(df["Purchase Price"], errors='coerce').fillna(0.0)
@@ -123,42 +123,28 @@ def save_target_weights(df):
         st.error(f"구글 시트 저장 실패: {e}")
 
 import requests
-from bs4 import BeautifulSoup
-import urllib3
-import re
-urllib3.disable_warnings()
 
-def fetch_metlife_data(base_url, start_dt, end_dt):
+def fetch_yahoo(ticker, start_date_str, end_date_str):
     try:
-        url = base_url
-        url = re.sub(r'stDate=\d+', f'stDate={start_dt.strftime("%Y%m%d")}', url)
-        url = re.sub(r'edDate=\d+', f'edDate={end_dt.strftime("%Y%m%d")}', url)
-        res = requests.get(url, verify=False, timeout=10)
-        soup = BeautifulSoup(res.content.decode('utf-8', errors='replace'), 'html.parser')
-        tables = soup.find_all('table')
-        if not tables:
-            return pd.Series(dtype=float)
-        
-        rows = tables[0].find_all('tr')
-        dates = []
-        prices = []
-        for row in rows[1:]:
-            th = row.find('th')
-            tds = row.find_all('td')
-            if th and tds:
-                date_str = th.text.strip()
-                price_str = tds[0].text.strip().replace(',', '')
-                try:
-                    dates.append(pd.to_datetime(date_str))
-                    prices.append(float(price_str))
-                except:
-                    pass
-        if dates and prices:
-            series = pd.Series(prices, index=dates).sort_index()
-            return series
+        url = f"https://query1.finance.yahoo.com/v8/finance/chart/{ticker}?interval=1d&range=5y"
+        headers = {'User-Agent': 'Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36'}
+        res = requests.get(url, headers=headers, timeout=10)
+        if res.status_code == 200:
+            data = res.json()
+            result = data.get('chart', {}).get('result', [])
+            if result:
+                timestamps = result[0].get('timestamp', [])
+                closes = result[0].get('indicators', {}).get('quote', [{}])[0].get('close', [])
+                if timestamps and closes:
+                    dates = [datetime.fromtimestamp(ts) for ts in timestamps]
+                    df = pd.DataFrame({'Close': closes}, index=dates)
+                    df = df.dropna()
+                    df = df[df.index >= pd.to_datetime(start_date_str)]
+                    df = df[df.index <= pd.to_datetime(end_date_str) + pd.Timedelta(days=1)]
+                    return df
     except Exception as e:
-        print(f"Error fetching metlife: {e}")
-    return pd.Series(dtype=float)
+        print(f"Yahoo fetch error for {ticker}: {e}")
+    return pd.DataFrame()
 
 # 환율 및 시세 가져오기 (캐싱 적용)
 @st.cache_data(ttl=3600)
@@ -166,14 +152,15 @@ def get_current_data(ticker):
     try:
         end_date = datetime.today()
         start_date = end_date - timedelta(days=5)
+        start_str = start_date.strftime("%Y-%m-%d")
+        end_str = end_date.strftime("%Y-%m-%d")
         
-        if ticker.startswith("http"):
-            series = fetch_metlife_data(ticker, start_date, end_date)
-            if not series.empty:
-                return series.iloc[-1]
-            return None
+        if ticker.isalpha():
+            df = fetch_yahoo(ticker, start_str, end_str)
+            if not df.empty:
+                return df['Close'].iloc[-1]
             
-        data = fdr.DataReader(ticker, start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+        data = fdr.DataReader(ticker, start_str, end_str)
         if not data.empty:
             return data['Close'].iloc[-1]
     except Exception as e:
@@ -197,18 +184,20 @@ def fetch_history_data(tickers):
     end_dt = datetime.today()
     start_dt = end_dt - timedelta(days=5*365)
     start_date_str = start_dt.strftime("%Y-%m-%d")
+    end_date_str = end_dt.strftime("%Y-%m-%d")
     
     hist_dict = {}
     for t in tickers:
         try:
-            if t.startswith("http"):
-                series = fetch_metlife_data(t, start_dt, end_dt)
-                if not series.empty:
-                    hist_dict[t] = series
-            else:
-                df = fdr.DataReader(t, start_date_str)
+            if t.isalpha():
+                df = fetch_yahoo(t, start_date_str, end_date_str)
                 if not df.empty:
                     hist_dict[t] = df['Close']
+                    continue
+            
+            df = fdr.DataReader(t, start_date_str)
+            if not df.empty:
+                hist_dict[t] = df['Close']
         except:
             pass
     
