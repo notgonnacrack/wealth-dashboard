@@ -174,7 +174,8 @@ def get_current_data(ticker):
 @st.cache_data(ttl=86400)
 def get_historical_exchange_rate(date_str):
     try:
-        start_date = datetime.strptime(date_str, "%Y-%m-%d")
+        # 다양한 날짜 형식(2024.01.01 등) 지원을 위해 pandas to_datetime 사용
+        start_date = pd.to_datetime(date_str)
         end_date = start_date + timedelta(days=5) # 주말 대비 몇 일 여유분
         df = fetch_yahoo("KRW=X", start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
         if not df.empty:
@@ -185,7 +186,7 @@ def get_historical_exchange_rate(date_str):
         if not data.empty:
             return data['Close'].iloc[0]
     except Exception as e:
-        print(f"Error fetching historical exchange rate: {e}")
+        print(f"Error fetching historical exchange rate for '{date_str}': {e}")
     return None
 
 @st.cache_data(ttl=3600)
@@ -293,7 +294,9 @@ def main():
             hist_rates.append(h_rate)
             
             ticker = row["Ticker"]
-            is_foreign = (row.get("Currency", "USD") == "USD")
+            # Currency 컬럼에 공백이나 소문자가 섞여있어도 안전하게 USD로 인식하도록 개선
+            currency_val = str(row.get("Currency", "USD")).strip().upper()
+            is_foreign = (currency_val == "USD")
             
             # 구입 금액 계산
             input_price = row["Purchase Price"]
@@ -536,7 +539,7 @@ def main():
             for _, r in target_df.iterrows():
                 ticker = r["Ticker"]
                 qty = r["Quantity"]
-                currency = r.get("Currency", "USD")
+                currency = str(r.get("Currency", "USD")).strip().upper()
                 if ticker in hist_data.columns:
                     if currency == "USD":
                         total_series += hist_data[ticker] * qty * hist_data["USD/KRW"]
