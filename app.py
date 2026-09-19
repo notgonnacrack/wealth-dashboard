@@ -155,7 +155,11 @@ def get_current_data(ticker):
         start_str = start_date.strftime("%Y-%m-%d")
         end_str = end_date.strftime("%Y-%m-%d")
         
-        if ticker.isalpha():
+        if ticker == "USD/KRW":
+            df = fetch_yahoo("KRW=X", start_str, end_str)
+            if not df.empty:
+                return df['Close'].iloc[-1]
+        elif ticker.isalpha():
             df = fetch_yahoo(ticker, start_str, end_str)
             if not df.empty:
                 return df['Close'].iloc[-1]
@@ -172,6 +176,11 @@ def get_historical_exchange_rate(date_str):
     try:
         start_date = datetime.strptime(date_str, "%Y-%m-%d")
         end_date = start_date + timedelta(days=5) # 주말 대비 몇 일 여유분
+        df = fetch_yahoo("KRW=X", start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+        if not df.empty:
+            return df['Close'].iloc[0]
+        
+        # 폴백
         data = fdr.DataReader("USD/KRW", start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
         if not data.empty:
             return data['Close'].iloc[0]
@@ -189,7 +198,12 @@ def fetch_history_data(tickers):
     hist_dict = {}
     for t in tickers:
         try:
-            if t.isalpha():
+            if t == "USD/KRW":
+                df = fetch_yahoo("KRW=X", start_date_str, end_date_str)
+                if not df.empty:
+                    hist_dict[t] = df['Close']
+                    continue
+            elif t.isalpha():
                 df = fetch_yahoo(t, start_date_str, end_date_str)
                 if not df.empty:
                     hist_dict[t] = df['Close']
