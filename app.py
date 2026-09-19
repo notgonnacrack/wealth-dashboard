@@ -74,13 +74,16 @@ def save_assets(df):
     try:
         conn = get_gsheets_connection()
         conn.update(worksheet="Assets", data=df)
+        load_assets.clear() # 저장 후 즉시 반영을 위해 캐시 삭제
     except Exception as e:
         print(f"Error saving assets to sheets: {e}")
         st.error(f"구글 시트 저장 실패: {e}")
 
+@st.cache_data(ttl=60)
 def get_targets_raw():
     try:
         conn = get_gsheets_connection()
+        # 캐싱은 st.cache_data에 맡기고, conn.read 자체 캐시는 끄거나 무시
         df = conn.read(worksheet="Targets", ttl="0m")
         if df.empty or "Category" not in df.columns:
             raise ValueError("Empty or invalid targets sheet")
@@ -118,6 +121,8 @@ def save_target_weights(df):
     try:
         conn = get_gsheets_connection()
         conn.update(worksheet="Targets", data=df)
+        # 구글 시트 업데이트 성공 후, 다음 조회 시 즉시 반영되도록 캐시 삭제
+        get_targets_raw.clear() 
     except Exception as e:
         print(f"Error saving targets to sheets: {e}")
         st.error(f"구글 시트 저장 실패: {e}")
