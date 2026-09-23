@@ -11,7 +11,7 @@ import requests
 import urllib3
 import plotly.express as px
 
-# SSL ?�증???�류 ?�회 (?�내�??�록???�경 ?�??
+# SSL 인증서 오류 우회 (사내망/프록시 환경 대응)
 urllib3.disable_warnings(urllib3.exceptions.InsecureRequestWarning)
 old_request = requests.Session.request
 requests.Session.request = lambda self, *args, **kwargs: old_request(self, *args, **kwargs | {'verify': False})
@@ -20,23 +20,24 @@ st.set_page_config(page_title="Personal Wealth Dashboard", layout="wide")
 
 from streamlit_gsheets import GSheetsConnection
 
-# 구�? ?�트 ?�결
+# 구글 시트 연결
 def get_gsheets_connection():
     return st.connection("gsheets", type=GSheetsConnection)
 
-# ?�이??로드
+# 데이터 로드
 def load_assets():
     try:
         conn = get_gsheets_connection()
-        # ?�트 ?�름 'Assets'?�서 ?�이?��? ?�어?�니?? ttl="0m"?�로 ??�� 최신 ?�이?��? 가?�옵?�다.
+        # 시트 이름 'Assets'에서 데이터를 읽어옵니다. ttl="0m"으로 항상 최신 데이터를 가져옵니다.
         df = conn.read(worksheet="Assets", ttl="0m")
         
-        # �??�트?�거???�못???�이?�인 경우 초기??        if df.empty or "Ticker" not in df.columns:
+        # 빈 시트이거나 잘못된 데이터인 경우 초기화
+        if df.empty or "Ticker" not in df.columns:
             return pd.DataFrame(columns=["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"])
             
-        # 기존 마이그레?�션 로직
+        # 기존 마이그레이션 로직
         if "Category" not in df.columns:
-            df.insert(0, "Category", "미국?�장1")
+            df.insert(0, "Category", "미국시장1")
             
         if "Purchase Price (USD)" in df.columns:
             df.rename(columns={"Purchase Price (USD)": "Purchase Price"}, inplace=True)
@@ -58,9 +59,9 @@ def load_assets():
             df.insert(0, "Group", "기본계좌")
             save_assets(df)
             
-        # ArrowTypeError 방�?�??�한 ?�이???�???�리
+        # ArrowTypeError 방지를 위한 데이터 타입 정리
         df["Group"] = df["Group"].fillna("기본계좌").astype(str)
-        df["Category"] = df["Category"].fillna("미분�?).astype(str)
+        df["Category"] = df["Category"].fillna("미분류").astype(str)
         df["Ticker"] = df["Ticker"].fillna("").astype(str).str.strip()
         df["Purchase Date"] = df["Purchase Date"].fillna("").astype(str)
         df["Currency"] = df["Currency"].fillna("USD").astype(str)
@@ -72,20 +73,21 @@ def load_assets():
         print(f"Error loading assets from sheets: {e}")
         return pd.DataFrame(columns=["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"])
 
-# ?�이???�??def save_assets(df):
+# 데이터 저장
+def save_assets(df):
     try:
         conn = get_gsheets_connection()
         conn.update(worksheet="Assets", data=df)
-        load_assets.clear() # ?�????즉시 반영???�해 캐시 ??��
+        load_assets.clear() # 저장 후 즉시 반영을 위해 캐시 삭제
     except Exception as e:
         print(f"Error saving assets to sheets: {e}")
-        st.error(f"구�? ?�트 ?�???�패: {e}")
+        st.error(f"구글 시트 저장 실패: {e}")
 
 @st.cache_data(ttl=60)
 def get_targets_raw():
     try:
         conn = get_gsheets_connection()
-        # 캐싱?� st.cache_data??맡기�? conn.read ?�체 캐시???�거??무시
+        # 캐싱은 st.cache_data에 맡기고, conn.read 자체 캐시는 끄거나 무시
         df = conn.read(worksheet="Targets", ttl="0m")
         if df.empty or "Category" not in df.columns:
             raise ValueError("Empty or invalid targets sheet")
@@ -93,11 +95,11 @@ def get_targets_raw():
     except Exception as e:
         print(f"Error loading targets from sheets: {e}")
         return pd.DataFrame([
-            {"Category": "미국?�장1", "Target (%)": 20.0},
-            {"Category": "미국?�장2", "Target (%)": 20.0},
-            {"Category": "미국 ??, "Target (%)": 30.0},
+            {"Category": "미국시장1", "Target (%)": 20.0},
+            {"Category": "미국시장2", "Target (%)": 20.0},
+            {"Category": "미국 외", "Target (%)": 30.0},
             {"Category": "채권", "Target (%)": 15.0},
-            {"Category": "�?, "Target (%)": 15.0}
+            {"Category": "금", "Target (%)": 15.0}
         ])
 
 def load_target_weights():
@@ -123,11 +125,11 @@ def save_target_weights(df):
     try:
         conn = get_gsheets_connection()
         conn.update(worksheet="Targets", data=df)
-        # 구�? ?�트 ?�데?�트 ?�공 ?? ?�음 조회 ??즉시 반영?�도�?캐시 ??��
+        # 구글 시트 업데이트 성공 후, 다음 조회 시 즉시 반영되도록 캐시 삭제
         get_targets_raw.clear() 
     except Exception as e:
         print(f"Error saving targets to sheets: {e}")
-        st.error(f"구�? ?�트 ?�???�패: {e}")
+        st.error(f"구글 시트 저장 실패: {e}")
 
 import requests
 
@@ -156,7 +158,7 @@ def fetch_yahoo(ticker, start_date_str, end_date_str):
         print(f"Yahoo fetch error for {ticker}: {e}")
     return pd.DataFrame()
 
-# ?�율 �??�세 가?�오�?(캐싱 ?�용)
+# 환율 및 시세 가져오기 (캐싱 적용)
 @st.cache_data(ttl=3600)
 def get_current_data(ticker):
     try:
@@ -184,13 +186,14 @@ def get_current_data(ticker):
 @st.cache_data(ttl=86400)
 def get_historical_exchange_rate(date_str):
     try:
-        # ?�양???�짜 ?�식(2024.01.01 ?? 지?�을 ?�해 pandas to_datetime ?�용
+        # 다양한 날짜 형식(2024.01.01 등) 지원을 위해 pandas to_datetime 사용
         start_date = pd.to_datetime(date_str)
-        end_date = start_date + timedelta(days=5) # 주말 ?��?�????�유�?        df = fetch_yahoo("KRW=X", start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
+        end_date = start_date + timedelta(days=5) # 주말 대비 몇 일 여유분
+        df = fetch_yahoo("KRW=X", start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
         if not df.empty:
             return df['Close'].iloc[0]
         
-        # ?�백
+        # 폴백
         data = fdr.DataReader("USD/KRW", start_date.strftime("%Y-%m-%d"), end_date.strftime("%Y-%m-%d"))
         if not data.empty:
             return data['Close'].iloc[0]
@@ -229,57 +232,60 @@ def fetch_history_data(tickers):
         return pd.DataFrame()
         
     hist_df = pd.DataFrame(hist_dict)
-    hist_df = hist_df.ffill().bfill() # ?�락???�일 ?�이??채우�?    return hist_df
+    hist_df = hist_df.ffill().bfill() # 누락된 휴일 데이터 채우기
+    return hist_df
 
 def check_password():
     """Returns `True` if the user had the correct password."""
-    # 비�?번호 ?�정?????�어 ?�다�??�단 ?�과?�킵?�다.
+    # 비밀번호 설정이 안 되어 있다면 일단 통과시킵니다.
     if "app_password" not in st.secrets:
         return True
 
     def password_entered():
         if st.session_state["password"] == st.secrets["app_password"]:
             st.session_state["password_correct"] = True
-            del st.session_state["password"]  # 보안???�해 ?�션?�서 비�?번호 ??��
+            del st.session_state["password"]  # 보안을 위해 세션에서 비밀번호 삭제
         else:
             st.session_state["password_correct"] = False
 
     if "password_correct" not in st.session_state:
-        st.title("?�� Security")
-        st.text_input("?�?�보???�속 비�?번호�??�력?�세??, type="password", on_change=password_entered, key="password")
+        st.title("🔒 Security")
+        st.text_input("대시보드 접속 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
         return False
     elif not st.session_state["password_correct"]:
-        st.title("?�� Security")
-        st.text_input("?�?�보???�속 비�?번호�??�력?�세??, type="password", on_change=password_entered, key="password")
-        st.error("?�� 비�?번호가 ?�?�습?�다. ?�시 ?�도?�주?�요.")
+        st.title("🔒 Security")
+        st.text_input("대시보드 접속 비밀번호를 입력하세요", type="password", on_change=password_entered, key="password")
+        st.error("😕 비밀번호가 틀렸습니다. 다시 시도해주세요.")
         return False
     else:
         return True
 
 def main():
     if not check_password():
-        st.stop() # 비�?번호가 ?�리면 ?�기?????�행??멈춤
+        st.stop() # 비밀번호가 틀리면 여기서 앱 실행을 멈춤
 
-    st.title("?�� Personal Wealth Dashboard")
+    st.title("📈 Personal Wealth Dashboard")
 
-    hide_amounts = st.toggle("?? 금액 ?�기�?(공공?�소 모드)", value=False)
+    hide_amounts = st.toggle("👀 금액 숨기기 (공공장소 모드)", value=False)
     st.markdown("---")
 
-    # 2. ?�재 ?�율 가?�오�?    current_krw_rate = get_current_data("USD/KRW")
+    # 2. 현재 환율 가져오기
+    current_krw_rate = get_current_data("USD/KRW")
     if current_krw_rate is None:
-        st.error("?�재 ?�율 ?�보�?가?�오지 못했?�니?? ?�시�?1350?�을 ?�용?�니??")
+        st.error("현재 환율 정보를 가져오지 못했습니다. 임시로 1350원을 적용합니다.")
         current_krw_rate = 1350.0 # fallback
 
-    st.write(f"**?�재 ?�러/???�율:** ??current_krw_rate:,.2f}")
+    st.write(f"**현재 달러/원 환율:** ₩{current_krw_rate:,.2f}")
 
-    # 3. ?�산 목록 �?가�?계산
+    # 3. 자산 목록 및 가치 계산
     df = load_assets()
     
     if not df.empty:
-        # ?�이?�프?�임 복사본으�??�업
+        # 데이터프레임 복사본으로 작업
         display_df = df.copy()
         
-        # 계산???�한 리스??준�?        hist_rates = []
+        # 계산을 위한 리스트 준비
+        hist_rates = []
         purch_krw = []
         tot_purch_usds = []
         curr_prices = []
@@ -291,16 +297,16 @@ def main():
         fx_profits_krw = []
         asset_profits_krw = []
 
-        # �??�마???�세 �??�율 조회
+        # 각 행마다 시세 및 환율 조회
         for index, row in display_df.iterrows():
-            # 과거 ?�율
+            # 과거 환율
             h_rate = get_historical_exchange_rate(row["Purchase Date"])
             if h_rate is None:
                 h_rate = current_krw_rate # fallback
             hist_rates.append(h_rate)
             
             ticker = row["Ticker"]
-            # Currency 컬럼??공백?�나 ?�문?��? ?�여?�어???�전?�게 USD�??�식?�도�?개선
+            # Currency 컬럼에 공백이나 소문자가 섞여있어도 안전하게 USD로 인식하도록 개선
             currency_val = str(row.get("Currency", "USD")).strip().upper()
             is_foreign = (currency_val == "USD")
             
@@ -316,13 +322,13 @@ def main():
             purch_krw.append(purch_krw_val)
             tot_purch_usds.append(total_purch_usd)
             
-            # ?�재 ?�세
+            # 현재 시세
             c_price = get_current_data(ticker)
             if c_price is None:
                 c_price = input_price # fallback if API fails
             curr_prices.append(c_price)
             
-            # ?�재 가�?계산
+            # 현재 가치 계산
             if is_foreign:
                 c_usd_val = c_price * row["Quantity"]
                 c_krw_val = c_usd_val * current_krw_rate
@@ -333,12 +339,12 @@ def main():
             curr_usd_vals.append(c_usd_val)
             curr_krw_vals.append(c_krw_val)
             
-            # ?�익�?계산
+            # 수익률 계산
             p_usd = c_usd_val - total_purch_usd
             p_krw = c_krw_val - purch_krw_val
             p_pct = (p_krw / purch_krw_val) * 100 if purch_krw_val > 0 else 0
             
-            # ?�차?�과 ?�산?�익 분리
+            # 환차익과 자산손익 분리
             if is_foreign:
                 fx_p = total_purch_usd * (current_krw_rate - h_rate)
                 asset_p = p_krw - fx_p
@@ -352,7 +358,7 @@ def main():
             fx_profits_krw.append(fx_p)
             asset_profits_krw.append(asset_p)
             
-        # ?�이?�프?�임???�생 컬럼 추�?
+        # 데이터프레임에 파생 컬럼 추가
         display_df["Historical Rate (KRW)"] = hist_rates
         display_df["Total Purchase (USD)"] = tot_purch_usds
         display_df["Total Purchase (KRW)"] = purch_krw
@@ -364,22 +370,22 @@ def main():
         display_df["Profit/Loss (KRW)"] = profits_krw
         display_df["Profit/Loss (%)"] = profits_pct
 
-        # ?��? ?�별??�?체크박스 컬럼 추�?
+        # 내부 식별자 및 체크박스 컬럼 추가
         display_df.insert(0, "_ID", range(len(display_df)))
-        display_df.insert(1, "그래???�시", False)
+        display_df.insert(1, "그래프 표시", False)
 
         def format_money(val, is_profit=False, is_pct=False):
             if pd.isna(val): return ""
             if is_profit:
-                if val > 0.01: return f"?�� +{val:,.2f}%" if is_pct else f"?�� +{val:,.0f}"
-                elif val < -0.01: return f"?�� {val:,.2f}%" if is_pct else f"?�� {val:,.0f}"
+                if val > 0.01: return f"🔴 +{val:,.2f}%" if is_pct else f"🔴 +{val:,.0f}"
+                elif val < -0.01: return f"🔵 {val:,.2f}%" if is_pct else f"🔵 {val:,.0f}"
                 else: return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
             else:
                 return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
 
         editor_df = display_df.copy()
         
-        # ?�계 ??계산 �?추�?
+        # 합계 행 계산 및 추가
         total_purch_krw_sum = editor_df["Total Purchase (KRW)"].sum()
         total_curr_krw_sum = editor_df["Current Value (KRW)"].sum()
         total_asset_profit = editor_df["Asset Profit (KRW)"].sum()
@@ -389,8 +395,8 @@ def main():
         
         total_row = pd.DataFrame([{
             "_ID": -1,
-            "그래???�시": False,
-            "Group": "?�계",
+            "그래프 표시": False,
+            "Group": "합계",
             "Category": "-",
             "Ticker": "-",
             "Purchase Date": "-",
@@ -413,64 +419,65 @@ def main():
         def format_money(val, is_profit=False, is_pct=False):
             if pd.isna(val): return ""
             if is_profit:
-                if val > 0.01: return f"?�� +{val:,.2f}%" if is_pct else f"?�� +{val:,.0f}"
-                elif val < -0.01: return f"?�� {val:,.2f}%" if is_pct else f"?�� {val:,.0f}"
+                if val > 0.01: return f"🔴 +{val:,.2f}%" if is_pct else f"🔴 +{val:,.0f}"
+                elif val < -0.01: return f"🔵 {val:,.2f}%" if is_pct else f"🔵 {val:,.0f}"
                 else: return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
             else:
                 return f"{val:,.2f}%" if is_pct else f"{val:,.0f}"
 
-        # 문자?�로 변?�하??콤마?� ?�모?�콘 ?�상???�용 (글?�색 변경이 불�??�여 ?�모?�콘?�로 ?��?
-        editor_df["Historical Rate (KRW)"] = editor_df["Historical Rate (KRW)"].apply(lambda x: f"??x:,.2f}" if pd.notnull(x) else "")
+        # 문자열로 변환하여 콤마와 이모티콘 색상을 적용 (글자색 변경이 불가하여 이모티콘으로 대체)
+        editor_df["Historical Rate (KRW)"] = editor_df["Historical Rate (KRW)"].apply(lambda x: f"₩{x:,.2f}" if pd.notnull(x) else "")
         editor_df["Total Purchase (USD)"] = editor_df["Total Purchase (USD)"].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
-        editor_df["Total Purchase (KRW)"] = editor_df["Total Purchase (KRW)"].apply(lambda x: f"??x:,.0f}" if pd.notnull(x) else "")
+        editor_df["Total Purchase (KRW)"] = editor_df["Total Purchase (KRW)"].apply(lambda x: f"₩{x:,.0f}" if pd.notnull(x) else "")
         
         formatted_curr_prices = []
         for _, r in editor_df.iterrows():
             if r.get("Currency", "USD") == "USD":
                 formatted_curr_prices.append(f"${r['Current Price (USD)']:,.2f}")
             else:
-                formatted_curr_prices.append(f"??r['Current Price (USD)']:,.0f}")
+                formatted_curr_prices.append(f"₩{r['Current Price (USD)']:,.0f}")
         editor_df["Current Price (USD)"] = formatted_curr_prices
         
         editor_df["Current Value (USD)"] = editor_df["Current Value (USD)"].apply(lambda x: f"${x:,.2f}" if pd.notnull(x) else "")
-        editor_df["Current Value (KRW)"] = editor_df["Current Value (KRW)"].apply(lambda x: f"??x:,.0f}" if pd.notnull(x) else "")
+        editor_df["Current Value (KRW)"] = editor_df["Current Value (KRW)"].apply(lambda x: f"₩{x:,.0f}" if pd.notnull(x) else "")
         
-        # ?�익/?�실 컬럼??(?�상 ?�모?�콘 ?�용)
+        # 수익/손실 컬럼들 (색상 이모티콘 적용)
         editor_df["Asset Profit (KRW)"] = editor_df["Asset Profit (KRW)"].apply(lambda x: format_money(x, True))
         editor_df["FX Profit (KRW)"] = editor_df["FX Profit (KRW)"].apply(lambda x: format_money(x, True))
         editor_df["Profit/Loss (KRW)"] = editor_df["Profit/Loss (KRW)"].apply(lambda x: format_money(x, True))
         editor_df["Profit/Loss (%)"] = editor_df["Profit/Loss (%)"].apply(lambda x: format_money(x, True, True))
         
-        # ?�이???�디???�덱??버그 방�? (?�일 ?�커가 ?�러 개일 ??꼬이???�상)
-        # ?�커 ?�??고유�?_ID)???�덱?�로 ?�용?�되, ?�면?�서???��? 처리
+        # 데이터 에디터 인덱스 버그 방지 (동일 티커가 여러 개일 때 꼬이는 현상)
+        # 티커 대신 고유값(_ID)을 인덱스로 사용하되, 화면에서는 숨김 처리
         editor_df.set_index("_ID", inplace=True)
 
         target_weights_df = load_target_weights()
-        category_options = target_weights_df["Category"].tolist() + ["미분�?]
+        category_options = target_weights_df["Category"].tolist() + ["미분류"]
 
         col_config = {
-            "그래???�시": st.column_config.CheckboxColumn("?�� 그래???�시", default=False),
-            "Group": st.column_config.TextColumn("증권??계좌 (?�분류)"),
-            "Category": st.column_config.SelectboxColumn("?�산 분류 (?�분�?", options=category_options),
-            "Ticker": st.column_config.TextColumn("?�커"),
-            "Purchase Date": st.column_config.TextColumn("매수 ?�자"),
-            "Purchase Price": st.column_config.NumberColumn("매수 ?��? (?�정가??"), 
-            "Quantity": st.column_config.NumberColumn("?�량 (?�정가??"),
-            "Currency": st.column_config.SelectboxColumn("?�화", options=["USD", "KRW"]),
+            "그래프 표시": st.column_config.CheckboxColumn("📊 그래프 표시", default=False),
+            "Group": st.column_config.TextColumn("증권사/계좌 (대분류)"),
+            "Category": st.column_config.SelectboxColumn("자산 분류 (소분류)", options=category_options),
+            "Ticker": st.column_config.TextColumn("티커"),
+            "Purchase Date": st.column_config.TextColumn("매수 일자"),
+            "Purchase Price": st.column_config.NumberColumn("매수 단가 (수정가능)"), 
+            "Quantity": st.column_config.NumberColumn("수량 (수정가능)"),
+            "Currency": st.column_config.SelectboxColumn("통화", options=["USD", "KRW"]),
             
-            # ?�생 컬럼?��? ?�제 ?�시 문자??TextColumn)????            "Historical Rate (KRW)": st.column_config.TextColumn("과거 ?�율", disabled=True),
-            "Total Purchase (USD)": st.column_config.TextColumn("�?매수(USD)", disabled=True),
-            "Total Purchase (KRW)": st.column_config.TextColumn("�?매수(KRW)", disabled=True),
-            "Current Price (USD)": st.column_config.TextColumn("?�재 ?�세", disabled=True),
-            "Current Value (USD)": st.column_config.TextColumn("?�재 가�?USD)", disabled=True),
-            "Current Value (KRW)": st.column_config.TextColumn("?�재 가�?KRW)", disabled=True),
-            "Asset Profit (KRW)": st.column_config.TextColumn("?�산 ?�익(KRW)", disabled=True),
-            "FX Profit (KRW)": st.column_config.TextColumn("?�차??KRW)", disabled=True),
-            "Profit/Loss (KRW)": st.column_config.TextColumn("?�익/?�실(KRW)", disabled=True),
-            "Profit/Loss (%)": st.column_config.TextColumn("?�익�?%)", disabled=True),
+            # 파생 컬럼들은 이제 다시 문자열(TextColumn)이 됨
+            "Historical Rate (KRW)": st.column_config.TextColumn("과거 환율", disabled=True),
+            "Total Purchase (USD)": st.column_config.TextColumn("총 매수(USD)", disabled=True),
+            "Total Purchase (KRW)": st.column_config.TextColumn("총 매수(KRW)", disabled=True),
+            "Current Price (USD)": st.column_config.TextColumn("현재 시세", disabled=True),
+            "Current Value (USD)": st.column_config.TextColumn("현재 가치(USD)", disabled=True),
+            "Current Value (KRW)": st.column_config.TextColumn("현재 가치(KRW)", disabled=True),
+            "Asset Profit (KRW)": st.column_config.TextColumn("자산 손익(KRW)", disabled=True),
+            "FX Profit (KRW)": st.column_config.TextColumn("환차익(KRW)", disabled=True),
+            "Profit/Loss (KRW)": st.column_config.TextColumn("수익/손실(KRW)", disabled=True),
+            "Profit/Loss (%)": st.column_config.TextColumn("수익률(%)", disabled=True),
         }
         
-        st.markdown("?�� **Tip:** ???�의 값을 ?�블?�릭?�여 ?�유�?�� ?�정?�거?? 가???�쪽 ?�덱?��? ?�릭?�고 `Del` ?��? ?�러 ??��?????�습?�다. ?�정???�료?�면 ???�래??**?�??* 버튼???�르?�요. <br/>좌측 **?�� 그래???�시** 체크박스�?켜시�??�당 ?�산�?차트???��??�니??", unsafe_allow_html=True)
+        st.markdown("💡 **Tip:** 표 안의 값을 더블클릭하여 자유롭게 수정하거나, 가장 왼쪽 인덱스를 클릭하고 `Del` 키를 눌러 삭제할 수 있습니다. 수정을 완료하면 표 아래의 **저장** 버튼을 누르세요. <br/>좌측 **📊 그래프 표시** 체크박스를 켜시면 해당 자산만 차트에 나타납니다.", unsafe_allow_html=True)
         
         base_cols = ["Group", "Category", "Ticker", "Purchase Date", "Purchase Price", "Quantity", "Currency"]
         edited_display = st.data_editor(
@@ -483,29 +490,29 @@ def main():
             key="main_table_editor"
         )
         
-        if st.button("?�정/??�� 변경사???�??):
+        if st.button("수정/삭제 변경사항 저장"):
             edited_base = edited_display.reset_index()[base_cols]
-            # ?�계 ?��? ?�?�하지 ?�음
-            edited_base = edited_base[edited_base["Group"] != "?�계"]
+            # 합계 행은 저장하지 않음
+            edited_base = edited_base[edited_base["Group"] != "합계"]
             save_assets(edited_base)
-            st.success("?�산 ?�보가 ?�공?�으�??�데?�트 ?�었?�니??")
+            st.success("자산 정보가 성공적으로 업데이트 되었습니다!")
             st.rerun()
 
         st.markdown("---")
-        # ?�괄 ?�택 ?�션 추�? (차트?� ?�약 바로 ?�로 ?�동)
+        # 일괄 선택 옵션 추가 (차트와 요약 바로 위로 이동)
         col_sel1, col_sel2 = st.columns(2)
         with col_sel1:
-            sel_groups = st.multiselect("?�� ?�분류(증권??계좌) ?�괄 ?�택", display_df["Group"].unique(), help="?�택???�분류???�한 모든 ?�산???�래 ?�약�?그래?�에 반영?�니??")
+            sel_groups = st.multiselect("📂 대분류(증권사/계좌) 일괄 선택", display_df["Group"].unique(), help="선택한 대분류에 속한 모든 자산이 아래 요약과 그래프에 반영됩니다.")
         with col_sel2:
-            sel_categories = st.multiselect("?���??�분�??�산 ?�격) ?�괄 ?�택", display_df["Category"].unique(), help="?�택???�분류에 ?�한 모든 ?�산???�래 ?�약�?그래?�에 반영?�니??")
+            sel_categories = st.multiselect("🏷️ 소분류(자산 성격) 일괄 선택", display_df["Category"].unique(), help="선택한 소분류에 속한 모든 자산이 아래 요약과 그래프에 반영됩니다.")
 
         edited_display_reset = edited_display.reset_index()
-        # 그래???�약 계산 ??'?�계' ?��? ?�외
+        # 그래프/요약 계산 시 '합계' 행은 제외
         valid_display = edited_display_reset[edited_display_reset["_ID"] != -1]
         
-        selected_ids = valid_display.loc[valid_display["그래???�시"] == True, "_ID"].tolist()
+        selected_ids = valid_display.loc[valid_display["그래프 표시"] == True, "_ID"].tolist()
         
-        # ?�괄 ?�택??그룹?�나 카테고리가 ?�다�??�택 목록??추�?
+        # 일괄 선택된 그룹이나 카테고리가 있다면 선택 목록에 추가
         if sel_groups:
             group_ids = valid_display.loc[valid_display["Group"].isin(sel_groups), "_ID"].tolist()
             selected_ids.extend(group_ids)
@@ -513,9 +520,9 @@ def main():
             cat_ids = valid_display.loc[valid_display["Category"].isin(sel_categories), "_ID"].tolist()
             selected_ids.extend(cat_ids)
             
-        selected_ids = list(set(selected_ids)) # 중복 ?�거
+        selected_ids = list(set(selected_ids)) # 중복 제거
 
-        # --- ?�산 총액 변??그래??(??바로 ?�래 배치) ---
+        # --- 자산 총액 변동 그래프 (표 바로 아래 배치) ---
         has_selection = len(selected_ids) > 0
         target_df = valid_display[valid_display["_ID"].isin(selected_ids)] if has_selection else valid_display
         
@@ -524,15 +531,15 @@ def main():
             if len(sel_tickers) <= 3:
                 tickers_str = ", ".join(sel_tickers)
             else:
-                tickers_str = f"{sel_tickers[0]} ??{len(sel_tickers)-1}종목"
-            st.subheader(f"?�� {tickers_str} ?�산 가�?변??추이")
-            st.caption(f"?�택?�신 ?�산?�의 ?�화 가�?변?�입?�다.")
+                tickers_str = f"{sel_tickers[0]} 외 {len(sel_tickers)-1}종목"
+            st.subheader(f"📈 {tickers_str} 합산 가치 변동 추이")
+            st.caption(f"선택하신 자산들의 원화 가치 변동입니다.")
         else:
-            st.subheader("?�� ?�재 ?�체 ?�트?�리??가�?변??추이")
-            st.caption("?�재 보유중인 ?�체 ?�산 ?�량??과거?�도 ?�일?�게 보유?�다�?가?�했???�의 ?�화 가�?변?�입?�다.")
+            st.subheader("📈 현재 전체 포트폴리오 가치 변동 추이")
+            st.caption("현재 보유중인 전체 자산 수량을 과거에도 동일하게 보유했다고 가정했을 때의 원화 가치 변동입니다.")
         
         unique_tickers = valid_display["Ticker"].unique().tolist()
-        unique_tickers.sort() # ?�렬???�해 st.cache_data가 ?�서 변경을 ?�로???�청?�로 착각?�여 캐시�?깨는 ?�상(먹통) 방�?
+        unique_tickers.sort() # 정렬을 통해 st.cache_data가 순서 변경을 새로운 요청으로 착각하여 캐시를 깨는 현상(먹통) 방지
         if "USD/KRW" not in unique_tickers:
             unique_tickers.append("USD/KRW")
             
@@ -541,7 +548,7 @@ def main():
         if not hist_data.empty and "USD/KRW" in hist_data.columns:
             total_series = pd.Series(0.0, index=hist_data.index)
             
-            # ?�택???�산???�으�??�당 ?�산�? ?�으�??�체 ?�용
+            # 선택된 자산이 있으면 해당 자산만, 없으면 전체 사용
             
             for _, r in target_df.iterrows():
                 ticker = r["Ticker"]
@@ -554,10 +561,10 @@ def main():
                         total_series += hist_data[ticker] * qty
             
             period = st.radio(
-                "기간 ?�택",
+                "기간 선택",
                 ["1D", "1W", "1M", "YTD", "6M", "1Y", "3Y", "5Y"],
                 horizontal=True,
-                index=5 # 기본�?1Y
+                index=5 # 기본값 1Y
             )
 
             today = get_kst_today()
@@ -582,21 +589,21 @@ def main():
                 chart_df.columns = ["Date", "Total Value (KRW)"]
                 
                 if hide_amounts:
-                    st.metric("?�택??기간 ???�산 변??, "********", f"{pct_change:+.2f}%")
+                    st.metric("선택한 기간 내 자산 변동", "********", f"{pct_change:+.2f}%")
                     if first_val > 0:
                         chart_df["Total Value (KRW)"] = (chart_df["Total Value (KRW)"] / first_val) * 100
                     fig2 = px.line(chart_df, x="Date", y="Total Value (KRW)", color_discrete_sequence=["#2ca02c"])
-                    fig2.update_layout(xaxis_title="", yaxis_title="?��? 가�?(?�작??100)", margin=dict(t=10, b=10, l=10, r=10), hovermode="x unified")
+                    fig2.update_layout(xaxis_title="", yaxis_title="상대 가치 (시작점=100)", margin=dict(t=10, b=10, l=10, r=10), hovermode="x unified")
                 else:
-                    st.metric("?�택??기간 ???�산 변??, f"??last_val:,.0f}", f"{diff:,.0f} ??({pct_change:+.2f}%)")
+                    st.metric("선택한 기간 내 자산 변동", f"₩{last_val:,.0f}", f"{diff:,.0f} 원 ({pct_change:+.2f}%)")
                     fig2 = px.line(chart_df, x="Date", y="Total Value (KRW)", color_discrete_sequence=["#2ca02c"])
-                    fig2.update_layout(xaxis_title="", yaxis_title="?�화(??", margin=dict(t=10, b=10, l=10, r=10), hovermode="x unified")
+                    fig2.update_layout(xaxis_title="", yaxis_title="원화(₩)", margin=dict(t=10, b=10, l=10, r=10), hovermode="x unified")
                     
                 st.plotly_chart(fig2, use_container_width=True)
             else:
-                st.warning("?�택??기간???�당?�는 ?�이?��? ?�습?�다.")
+                st.warning("선택한 기간에 해당하는 데이터가 없습니다.")
 
-        # ?�약 ?�보 ?�시 (?�택???�산 기�?, ?�으�??�체)
+        # 요약 정보 표시 (선택된 자산 기준, 없으면 전체)
         calc_df = display_df[display_df["_ID"].isin(selected_ids)] if (has_selection and len(selected_ids) < len(display_df)) else display_df
         
         total_purchase_krw = calc_df["Total Purchase (KRW)"].sum()
@@ -609,11 +616,11 @@ def main():
 
         st.markdown("---")
         if has_selection and len(selected_ids) < len(display_df):
-            st.subheader("?�� ?�택???�산 ?�약")
+            st.subheader("📌 선택된 자산 요약")
         else:
-            st.subheader("�??�산 ?�약")
+            st.subheader("총 자산 요약")
         
-        def display_metric(label, value, is_pct=False, prefix="??):
+        def display_metric(label, value, is_pct=False, prefix="₩"):
             if hide_amounts:
                 return "********"
             if is_pct:
@@ -623,60 +630,60 @@ def main():
             return f"{prefix}{value:,.0f}"
 
         col1, col2, col3 = st.columns(3)
-        col1.metric("�?매수 금액 (?�화 ?�산)", display_metric("�?매수 금액 (?�화 ?�산)", total_purchase_krw))
-        col2.metric("?�재 �??�산 (?�화)", display_metric("?�재 �??�산 (?�화)", total_current_krw), display_metric("?�익", total_profit_krw, prefix="") if not hide_amounts else None)
-        col3.metric("?�재 �??�산 (?�러)", display_metric("?�재 �??�산 (?�러)", total_current_usd, prefix="$"))
+        col1.metric("총 매수 금액 (원화 환산)", display_metric("총 매수 금액 (원화 환산)", total_purchase_krw))
+        col2.metric("현재 총 자산 (원화)", display_metric("현재 총 자산 (원화)", total_current_krw), display_metric("수익", total_profit_krw, prefix="") if not hide_amounts else None)
+        col3.metric("현재 총 자산 (달러)", display_metric("현재 총 자산 (달러)", total_current_usd, prefix="$"))
         
         st.write("")
         col4, col5, col6 = st.columns(3)
-        col4.metric("�??�익�?(?�화 기�?)", display_metric("�??�익�?(?�화 기�?)", total_profit_pct, is_pct=True))
-        col5.metric("�??�산 ?�익 (?�화)", display_metric("�??�산 ?�익 (?�화)", total_asset_profit_krw))
-        col6.metric("�??�차??(?�화)", display_metric("�??�차??(?�화)", total_fx_profit_krw))
+        col4.metric("총 수익률 (원화 기준)", display_metric("총 수익률 (원화 기준)", total_profit_pct, is_pct=True))
+        col5.metric("총 자산 손익 (원화)", display_metric("총 자산 손익 (원화)", total_asset_profit_krw))
+        col6.metric("총 환차익 (원화)", display_metric("총 환차익 (원화)", total_fx_profit_krw))
 
-        # 1. ?�산 분류(?�분�?�?비율 분석
+        # 1. 자산 분류(소분류)별 비율 분석
         st.markdown("---")
         
         col_title, col_cash, col_cash_btn = st.columns([1.2, 0.8, 0.2])
         with col_title:
-            st.subheader("?�� ?�산 ?�트?�리??비중 (?�분�?")
+            st.subheader("📊 자산 포트폴리오 비중 (소분류)")
             
         saved_cash = get_available_cash()
         with col_cash:
             available_cash = st.number_input(
-                "?�� 추�? ?�자 가???�유 ?�금 (??", 
+                "💵 추가 투자 가능 여유 현금 (₩)", 
                 min_value=0, value=int(saved_cash), step=1000000,
-                help="?�직 ?�산?�로 매수?��? ?��? ?�금???�력?�면, ???�금???�함??총액??기�??�로 목표 비중??맞추�??�해 ?�떤 ?�산???�마?????�야 ?�는지(과�?�?금액) ?�동 계산??줍니??"
+                help="아직 자산으로 매수하지 않은 현금을 입력하면, 이 현금을 포함한 총액을 기준으로 목표 비중에 맞추기 위해 어떤 자산을 얼마나 더 사야 하는지(과부족 금액) 자동 계산해 줍니다."
             )
             if available_cash is None:
                 available_cash = 0
                 
         with col_cash_btn:
             st.write("<br>", unsafe_allow_html=True)
-            if st.button("?�??, key="save_cash_btn"):
+            if st.button("저장", key="save_cash_btn"):
                 save_available_cash(available_cash)
                 st.rerun()
         
         target_weights_df = load_target_weights()
         target_categories = target_weights_df["Category"].tolist()
         
-        # 목표 비중???�의??카테고리???�한 ?�산�??�터링하??총합 계산
+        # 목표 비중에 정의된 카테고리에 속한 자산만 필터링하여 총합 계산
         filtered_display_df = display_df[display_df["Category"].isin(target_categories)]
         current_invested_krw = filtered_display_df["Current Value (KRW)"].sum()
         
-        # ?�유 ?�금???�함???�로???�체 목표 금액
+        # 여유 현금을 포함한 새로운 전체 목표 금액
         target_total_krw = current_invested_krw + available_cash
         
         category_df = filtered_display_df.groupby("Category")["Current Value (KRW)"].sum().reset_index()
-        # ?�재 비중?� ?��? ?�자??금액만을 기�??�로 100%�?보여줍니??
+        # 현재 비중은 이미 투자된 금액만을 기준으로 100%를 보여줍니다.
         category_df["Ratio (%)"] = (category_df["Current Value (KRW)"] / current_invested_krw) * 100 if current_invested_krw > 0 else 0
         
-        # 목표 비중�?비교?????�도�?병합 (?�의??카테고리가 모두 ?�오?�록)
+        # 목표 비중과 비교할 수 있도록 병합 (정의된 카테고리가 모두 나오도록)
         category_df = pd.merge(target_weights_df, category_df, on="Category", how="left").fillna(0)
         
         col_chart, col_table = st.columns([1, 1.3])
         
         with col_chart:
-            # 값이 0보다 ??카테고리�?차트???�시
+            # 값이 0보다 큰 카테고리만 차트에 표시
             plot_df = category_df[category_df["Current Value (KRW)"] > 0]
             if not plot_df.empty:
                 fig = px.pie(plot_df, values='Current Value (KRW)', names='Category', hole=0.4, 
@@ -685,49 +692,49 @@ def main():
                 fig.update_layout(margin=dict(t=0, b=0, l=0, r=0))
                 st.plotly_chart(fig, use_container_width=True)
             else:
-                st.info("?�트?�리?�에 ?�산???�습?�다.")
+                st.info("포트폴리오에 자산이 없습니다.")
             
         with col_table:
             st.write("<br>", unsafe_allow_html=True)
             
-            # 과�?�?계산 (?�체 ?�산???�닌 '목표???�의???�산?�의 총합' 기�?)
+            # 과부족 계산 (전체 자산이 아닌 '목표에 정의된 자산들의 총합' 기준)
             table_df = category_df.copy()
             table_df["목표 금액"] = (target_total_krw * table_df["Target (%)"] / 100)
-            table_df["과�?�?금액"] = table_df["Current Value (KRW)"] - table_df["목표 금액"]
+            table_df["과부족 금액"] = table_df["Current Value (KRW)"] - table_df["목표 금액"]
             table_df["비중 차이"] = table_df["Ratio (%)"] - table_df["Target (%)"]
             
-            # 출력???�이�??�성
-            display_table = table_df[["Category", "Target (%)", "Ratio (%)", "비중 차이", "Current Value (KRW)", "과�?�?금액"]].copy()
-            display_table.columns = ["?�산 분류", "목표 비중 (%)", "?�재 비중 (%)", "비중 차이 (%p)", "?�재 금액 (??", "과�?�?금액 (??"]
+            # 출력용 테이블 생성
+            display_table = table_df[["Category", "Target (%)", "Ratio (%)", "비중 차이", "Current Value (KRW)", "과부족 금액"]].copy()
+            display_table.columns = ["자산 분류", "목표 비중 (%)", "현재 비중 (%)", "비중 차이 (%p)", "현재 금액 (₩)", "과부족 금액 (₩)"]
             
-            # 총계 ??추�?
+            # 총계 행 추가
             total_row = pd.DataFrame([{
-                "?�산 분류": "총계",
+                "자산 분류": "총계",
                 "목표 비중 (%)": display_table["목표 비중 (%)"].sum(),
-                "?�재 비중 (%)": display_table["?�재 비중 (%)"].sum(),
+                "현재 비중 (%)": display_table["현재 비중 (%)"].sum(),
                 "비중 차이 (%p)": display_table["비중 차이 (%p)"].sum(),
-                "?�재 금액 (??": display_table["?�재 금액 (??"].sum(),
-                "과�?�?금액 (??": display_table["과�?�?금액 (??"].sum()
+                "현재 금액 (₩)": display_table["현재 금액 (₩)"].sum(),
+                "과부족 금액 (₩)": display_table["과부족 금액 (₩)"].sum()
             }])
             display_table = pd.concat([display_table, total_row], ignore_index=True)
             
             def style_category(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
                 for col in df.columns:
-                    if col in ["비중 차이 (%p)", "과�?�?금액 (??"]:
-                        styles[col] = df.apply(lambda r: ('color: #ff4b4b; ' if r[col] < -0.01 else ('color: #0068c9; ' if r[col] > 0.01 else '')) + 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["?�산 분류"] == "총계" else ''), axis=1)
-                    elif col != "?�산 분류":
-                        styles[col] = df.apply(lambda r: 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["?�산 분류"] == "총계" else ''), axis=1)
+                    if col in ["비중 차이 (%p)", "과부족 금액 (₩)"]:
+                        styles[col] = df.apply(lambda r: ('color: #ff4b4b; ' if r[col] < -0.01 else ('color: #0068c9; ' if r[col] > 0.01 else '')) + 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["자산 분류"] == "총계" else ''), axis=1)
+                    elif col != "자산 분류":
+                        styles[col] = df.apply(lambda r: 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["자산 분류"] == "총계" else ''), axis=1)
                     else:
-                        styles[col] = df.apply(lambda r: 'font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["?�산 분류"] == "총계" else '', axis=1)
+                        styles[col] = df.apply(lambda r: 'font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["자산 분류"] == "총계" else '', axis=1)
                 return styles
             
             styled_display = display_table.style.format({
                 "목표 비중 (%)": "{:.1f}",
-                "?�재 비중 (%)": "{:.1f}",
+                "현재 비중 (%)": "{:.1f}",
                 "비중 차이 (%p)": "{:+.1f}",
-                "?�재 금액 (??": "{:,.0f}",
-                "과�?�?금액 (??": "{:+,.0f}"
+                "현재 금액 (₩)": "{:,.0f}",
+                "과부족 금액 (₩)": "{:+,.0f}"
             }).apply(style_category, axis=None)
             
             st.dataframe(
@@ -737,9 +744,9 @@ def main():
                 height=int((len(display_table) + 1.5) * 38)
             )
 
-        # 2. 계좌/증권???�분류)�?비율 분석
+        # 2. 계좌/증권사(대분류)별 비율 분석
         st.markdown("---")
-        st.subheader("?�� 계좌/증권?�별 비중 (?�분류)")
+        st.subheader("🏢 계좌/증권사별 비중 (대분류)")
         
         group_df = display_df.groupby("Group")["Current Value (KRW)"].sum().reset_index()
         group_df["Ratio (%)"] = (group_df["Current Value (KRW)"] / total_current_krw) * 100 if total_current_krw > 0 else 0
@@ -756,29 +763,29 @@ def main():
         with col_g_table:
             st.write("<br>", unsafe_allow_html=True)
             g_display = group_df.copy()
-            g_display.columns = ["계좌/증권??(?�분류)", "?�재 금액 (??", "?�재 비중 (%)"]
-            g_display = g_display[["계좌/증권??(?�분류)", "?�재 비중 (%)", "?�재 금액 (??"]]
+            g_display.columns = ["계좌/증권사 (대분류)", "현재 금액 (₩)", "현재 비중 (%)"]
+            g_display = g_display[["계좌/증권사 (대분류)", "현재 비중 (%)", "현재 금액 (₩)"]]
             
-            # 총계 ??추�?
+            # 총계 행 추가
             total_g_row = pd.DataFrame([{
-                "계좌/증권??(?�분류)": "총계",
-                "?�재 비중 (%)": g_display["?�재 비중 (%)"].sum(),
-                "?�재 금액 (??": g_display["?�재 금액 (??"].sum()
+                "계좌/증권사 (대분류)": "총계",
+                "현재 비중 (%)": g_display["현재 비중 (%)"].sum(),
+                "현재 금액 (₩)": g_display["현재 금액 (₩)"].sum()
             }])
             g_display = pd.concat([g_display, total_g_row], ignore_index=True)
             
             def style_group(df):
                 styles = pd.DataFrame('', index=df.index, columns=df.columns)
                 for col in df.columns:
-                    if col != "계좌/증권??(?�분류)":
-                        styles[col] = df.apply(lambda r: 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["계좌/증권??(?�분류)"] == "총계" else ''), axis=1)
+                    if col != "계좌/증권사 (대분류)":
+                        styles[col] = df.apply(lambda r: 'text-align: right;' + ('font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["계좌/증권사 (대분류)"] == "총계" else ''), axis=1)
                     else:
-                        styles[col] = df.apply(lambda r: 'font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["계좌/증권??(?�분류)"] == "총계" else '', axis=1)
+                        styles[col] = df.apply(lambda r: 'font-weight: bold; background-color: rgba(128,128,128,0.2);' if r["계좌/증권사 (대분류)"] == "총계" else '', axis=1)
                 return styles
                 
             styled_g = g_display.style.format({
-                "?�재 비중 (%)": "{:.1f}",
-                "?�재 금액 (??": "{:,.0f}"
+                "현재 비중 (%)": "{:.1f}",
+                "현재 금액 (₩)": "{:,.0f}"
             }).apply(style_group, axis=None)
             
             st.dataframe(
@@ -788,31 +795,32 @@ def main():
                 height=int((len(g_display) + 1.5) * 38)
             )
 
-        # ?�산 총액 변??그래??
+        # 자산 총액 변동 그래프
+
 
 
 
     else:
-        st.info("?�래 ?�에???�산??추�??�거??구�? ?�트?�서 ?�력?�주?�요.")
+        st.info("아래 폼에서 자산을 추가하거나 구글 시트에서 입력해주세요.")
 
     st.markdown("---")
-    st.header("?�로???�산 추�?")
+    st.header("새로운 자산 추가")
     with st.form("add_asset_form"):
         target_weights_df = load_target_weights()
-        category_options = target_weights_df["Category"].tolist() + ["미분�?]
+        category_options = target_weights_df["Category"].tolist() + ["미분류"]
         
         col_f1, col_f2 = st.columns(2)
         with col_f1:
-            group = st.text_input("증권??계좌 (?�분류)", "기본계좌")
-            category = st.selectbox("?�산 분류 (?�분�?", category_options)
-            ticker_input = st.text_input("?�커 ?�는 메트?�이??공시 URL", "")
-            purchase_date_str = st.text_input("구매 ?�자 (YYYY-MM-DD)", get_kst_today().strftime("%Y-%m-%d"))
+            group = st.text_input("증권사/계좌 (대분류)", "기본계좌")
+            category = st.selectbox("자산 분류 (소분류)", category_options)
+            ticker_input = st.text_input("티커 또는 메트라이프 공시 URL", "")
+            purchase_date_str = st.text_input("구매 일자 (YYYY-MM-DD)", get_kst_today().strftime("%Y-%m-%d"))
         with col_f2:
-            purchase_price = st.number_input("구입 금액 (1주당 가�??�는 기�?가)", min_value=0.0, format="%.2f")
-            currency = st.radio("구입 ?�화", ["USD (?�러)", "KRW (?�화)"], horizontal=True)
-            quantity = st.number_input("?�량", min_value=0.0, format="%.4f")
+            purchase_price = st.number_input("구입 금액 (1주당 가격 또는 기준가)", min_value=0.0, format="%.2f")
+            currency = st.radio("구입 통화", ["USD (달러)", "KRW (원화)"], horizontal=True)
+            quantity = st.number_input("수량", min_value=0.0, format="%.4f")
             
-        submit_button = st.form_submit_button(label="추�?")
+        submit_button = st.form_submit_button(label="추가")
 
         if submit_button:
             ticker = ticker_input.strip()
@@ -839,16 +847,16 @@ def main():
                 }])
                 df = pd.concat([df, new_row], ignore_index=True)
                 save_assets(df)
-                st.success(f"{ticker} ?�산??추�??�었?�니??")
+                st.success(f"{ticker} 자산이 추가되었습니다!")
                 st.rerun()
             else:
-                st.error("모든 ??��???�바르게 ?�력?�주?�요. (?�짜??YYYY-MM-DD ?�식)")
+                st.error("모든 항목을 올바르게 입력해주세요. (날짜는 YYYY-MM-DD 형식)")
 
     st.markdown("---")
-    with st.expander("?�� ?�산 분류 �?목표 비중 커스?� ?�정", expanded=False):
-        st.caption("?�로???�산 분류�?추�??�거?? 목표 비중(%)???�정?????�습?�다. 변�????�래 '?�?? 버튼???�르?�요. (?��? ?�릭?�서 바로 ?�정/추�?/??�� 가??")
+    with st.expander("🎯 자산 분류 및 목표 비중 커스텀 설정", expanded=False):
+        st.caption("새로운 자산 분류를 추가하거나, 목표 비중(%)을 수정할 수 있습니다. 변경 후 아래 '저장' 버튼을 누르세요. (표를 클릭해서 바로 수정/추가/삭제 가능)")
         
-        # ?�기???�시 로드(?�시 모�? ?�태 꼬임 방�?)
+        # 여기서 다시 로드(혹시 모를 상태 꼬임 방지)
         current_targets_df = load_target_weights()
         edited_targets = st.data_editor(
             current_targets_df,
@@ -856,21 +864,21 @@ def main():
             use_container_width=True,
             key="target_weights_editor",
             column_config={
-                "Category": st.column_config.TextColumn("?�산 분류 (Category)", required=True),
+                "Category": st.column_config.TextColumn("자산 분류 (Category)", required=True),
                 "Target (%)": st.column_config.NumberColumn("목표 비중 (%)", min_value=0.0, max_value=100.0, required=True, format="%.1f")
             }
         )
         
-        if st.button("목표 비중 ?�??):
+        if st.button("목표 비중 저장"):
             if abs(edited_targets["Target (%)"].sum() - 100.0) < 0.1:
                 cash_amount = get_available_cash()
                 if cash_amount > 0:
                     edited_targets = pd.concat([edited_targets, pd.DataFrame([{"Category": "_AVAILABLE_CASH_", "Target (%)": cash_amount}])], ignore_index=True)
                 save_target_weights(edited_targets)
-                st.success("목표 비중???�?�되?�습?�다!")
+                st.success("목표 비중이 저장되었습니다!")
                 st.rerun()
             else:
-                st.error(f"비중 ?�계가 100%가 ?�닙?�다! (?�재: {edited_targets['Target (%)'].sum():.1f}%)")
+                st.error(f"비중 합계가 100%가 아닙니다! (현재: {edited_targets['Target (%)'].sum():.1f}%)")
 
 if __name__ == "__main__":
     main()
